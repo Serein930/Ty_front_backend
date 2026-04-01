@@ -1,0 +1,35 @@
+/* ====== CSS 变量定义 ====== */
+:root {
+    /* 主色调 */
+    --bg-dark: #0a0f1a;
+    --bg-panel: #121a2d;
+    --bg-sidebar-right: #0f1729;
+    --border-color: #26334d;
+    --border-highlight: #3b82f6;
+    
+    /* 文本颜色 */
+    --text-main: #e2e8f0;
+    --text-dim: #8c9db5;
+    
+    /* 强调色 */
+    --accent-blue: #3b82f6;
+    --accent-red: #ef4444;
+    --accent-orange: #f97316;
+    --accent-green: #10b981;
+    
+    /* 图表配色 */
+    --chart-pink: #ec4899;
+    --chart-yellow: #f59e0b;
+    --chart-blue: #3b82f6;
+    --chart-cyan: #06b6d4;
+    
+    /* 交互状态 */
+    --bg-hover: rgba(59, 130, 246, 0.08);
+    --bg-active: rgba(59, 130, 246, 0.15);
+    --bg-selected: rgba(16, 185, 129, 0.12);
+}
+
+/* ====== 自定义全局滚动条 ====== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
