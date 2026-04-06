@@ -6,6 +6,7 @@
       <aside class="sidebar" :class="{ 'collapsed': state.leftCollapsed }">
         <div class="sidebar-item" :class="{ active: state.activeModule === 'follow' }" @click="switchModule('follow')"><i class="fa-regular fa-heart"></i> <span>我的关注</span></div>
         <div class="sidebar-item" :class="{ active: state.activeModule === 'monitor' }" @click="switchModule('monitor')"><i class="fa-solid fa-desktop"></i> <span>专题监测</span></div>
+        <div class="sidebar-item" :class="{ active: state.activeModule === 'subscription' }" @click="switchModule('subscription')"><i class="fa-solid fa-route"></i> <span>订阅监测</span></div>
         <div class="sidebar-item" :class="{ active: state.activeModule === 'topicList' }" @click="switchModule('topicList')"><i class="fa-solid fa-list-ul"></i> <span>专题列表</span></div>
         <div class="sidebar-item" :class="{ active: state.activeModule === 'alerts' }" @click="switchModule('alerts')">
           <i class="fa-solid fa-bell"></i> <span style="flex: 1;">告警信息</span>
@@ -420,6 +421,277 @@
           </div>
         </template>
 
+        <template v-else-if="state.activeModule === 'subscription'">
+          <div class="board-grid subscription-grid">
+            <div class="cfg3-shell">
+              <section class="cfg3-left panel board-panel">
+                <div class="cfg3-left-head">
+                  <div class="panel-line-title"><i class="fa-solid fa-layer-group"></i> 订阅规则</div>
+                  <button class="chip-btn primary" @click="createSubscriptionRule"><i class="fa-solid fa-plus"></i> 新建</button>
+                </div>
+                <div class="sub-list-toolbar">
+                  <input v-model="subscriptionState.search" class="sub-input sub-search" placeholder="搜索：名称 / 专题 / 负责人 / 分发对象">
+                </div>
+                <div class="sub-rule-list">
+                  <div
+                    v-for="rule in filteredSubscriptionRules"
+                    :key="rule.id"
+                    class="sub-rule-item"
+                    :class="{ active: rule.id === subscriptionState.selectedId }"
+                    @click="selectSubscriptionRule(rule.id)">
+                    <div class="sub-rule-top">
+                      <div class="sub-rule-title">{{ rule.name || '未命名规则' }}</div>
+                      <span class="status-badge" :class="rule.enabled ? 'on' : 'stop'">{{ rule.enabled ? '启用' : '停用' }}</span>
+                    </div>
+                    <div class="sub-rule-meta">{{ (rule.topics || []).length }} 专题 ｜ ≥ {{ rule.minSeverity }}</div>
+                    <div class="sub-rule-meta">{{ rule.status === 'applied' ? '已发布' : '草稿' }}</div>
+                    <div class="sub-rule-foot">
+                      <span>{{ rule.schedule }}</span>
+                      <span>{{ rule.owner || 'SystemAdmin' }}</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="cfg3-main panel board-panel">
+                <div class="cfg3-toolbar">
+                  <div class="cfg3-toolbar-title">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>规则编排工作台</span>
+                  </div>
+                  <div class="cfg3-toolbar-actions">
+                    <button class="cfg3-btn ghost" @click="alertMock('版本历史即将开放')"><i class="fa-solid fa-clock-rotate-left"></i>版本历史</button>
+                    <button class="cfg3-btn danger" @click="deleteSubscriptionRule"><i class="fa-solid fa-trash-can"></i>删除</button>
+                    <button class="cfg3-btn ghost" @click="saveSubscriptionDraft"><i class="fa-solid fa-floppy-disk"></i>保存草稿</button>
+                    <button class="cfg3-btn primary" @click="publishSubscriptionRule"><i class="fa-solid fa-bolt"></i>发布应用</button>
+                  </div>
+                </div>
+
+                <div class="cfg3-headline">
+                  <div>
+                    <div class="cfg3-title-edit">
+                      <input
+                        v-if="subscriptionState.titleEditing"
+                        v-model="subscriptionEditor.name"
+                        class="cfg3-title-input"
+                        @blur="finishSubscriptionTitleEdit"
+                        @keyup.enter="finishSubscriptionTitleEdit"
+                        @keyup.esc="cancelSubscriptionTitleEdit"
+                        placeholder="请输入订阅主题标题">
+                      <h3 v-else @click="startSubscriptionTitleEdit">{{ subscriptionEditor.name || '高危涉毒自动化分发 (Demo)' }}</h3>
+                      <button v-if="!subscriptionState.titleEditing" class="cfg3-title-edit-btn" @click="startSubscriptionTitleEdit" title="编辑标题">
+                        <i class="fa-solid fa-pen"></i>
+                      </button>
+                    </div>
+                    <p>
+                      草稿保存：{{ selectedSubscriptionRule?.updatedAt || '-' }}
+                      <span class="cfg3-divider">|</span>
+                      状态：{{ selectedSubscriptionRule?.status === 'applied' ? '已发布' : '草稿' }}
+                    </p>
+                  </div>
+                  <select v-model="subscriptionEditor.enabled" class="cfg3-enable-select" :class="subscriptionEditor.enabled ? 'is-enabled' : 'is-disabled'">
+                    <option :value="true">启用</option>
+                    <option :value="false">停用</option>
+                  </select>
+                  <span class="cfg3-enable-tag" :class="subscriptionEditor.enabled ? 'enabled' : 'disabled'">{{ subscriptionEditor.enabled ? '启用中' : '已停用' }}</span>
+                </div>
+
+                <div class="cfg3-steps">
+                  <button class="cfg3-step" :class="{ active: subscriptionState.step === 1 }" @click="subscriptionState.step = 1">
+                    <small>步骤 1</small><b>识别条件</b><span>业务向导模式</span><i class="cfg3-step-dot"></i>
+                  </button>
+                  <button class="cfg3-step" :class="{ active: subscriptionState.step === 2 }" @click="subscriptionState.step = 2">
+                    <small>步骤 2</small><b>降噪治理</b><span>去重: 关闭, 频控: 50/h</span><i class="cfg3-step-dot"></i>
+                  </button>
+                  <button class="cfg3-step" :class="{ active: subscriptionState.step === 3 }" @click="subscriptionState.step = 3">
+                    <small>步骤 3</small><b>分发对象</b><span>已配置接收渠道</span><i class="cfg3-step-dot"></i>
+                  </button>
+                  <button class="cfg3-step" :class="{ active: subscriptionState.step === 4 }" @click="subscriptionState.step = 4">
+                    <small>步骤 4</small><b>元数据与权限</b><span>负责人: {{ subscriptionEditor.owner || 'SystemAdmin' }}</span><i class="cfg3-step-dot"></i>
+                  </button>
+                </div>
+
+                <div v-if="subscriptionState.step === 1" class="cfg3-step-pane">
+                  <div class="cfg3-mode-switch">
+                    <button class="active"><i class="fa-solid fa-gem"></i> 业务向导模式</button>
+                    <button><i class="fa-solid fa-code-branch"></i> 专家 AST 模式</button>
+                  </div>
+
+                  <div class="cfg3-section-title"><i class="fa-solid fa-bookmark"></i> 快速订阅情报大盘专题</div>
+                  <div class="cfg3-topic-grid">
+                    <button
+                      v-for="topic in SUBSCRIPTION_TOPICS"
+                      :key="topic.id"
+                      class="cfg3-topic"
+                      :class="{ active: subscriptionEditor.topics.includes(topic.id) }"
+                      @click="subscriptionEditor.topics = subscriptionEditor.topics.includes(topic.id) ? subscriptionEditor.topics.filter(t => t !== topic.id) : [...subscriptionEditor.topics, topic.id]">
+                      <i class="fa-solid" :class="topic.id === 'TopicDrugs' ? 'fa-capsules' : topic.id === 'TopicSmuggle' ? 'fa-person-walking-luggage' : topic.id === 'TopicTerror' ? 'fa-bomb' : topic.id === 'TopicDataLeak' ? 'fa-database' : topic.id === 'TopicTaiwan' ? 'fa-map-location-dot' : 'fa-bug'"></i>
+                      <span>{{ topic.name }}</span>
+                    </button>
+                  </div>
+
+                  <div class="cfg3-form-grid">
+                    <div class="cfg3-field">
+                      <label><i class="fa-solid fa-triangle-exclamation"></i> 最低接收危害等级</label>
+                      <select v-model="subscriptionEditor.minSeverity" class="sub-select">
+                        <option value="CRITICAL">CRITICAL</option>
+                        <option value="HIGH">HIGH</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="LOW">LOW</option>
+                      </select>
+                    </div>
+                    <div class="cfg3-field">
+                      <label><i class="fa-solid fa-chart-line"></i> 风险分数阈值</label>
+                      <input v-model.number="subscriptionEditor.riskMin" class="sub-input" type="number" min="0" max="100" placeholder="如: 70">
+                    </div>
+                  </div>
+
+                  <div class="cfg3-form-grid">
+                    <div class="cfg3-field">
+                      <label><i class="fa-solid fa-map-pin"></i> 地域关注</label>
+                      <input v-model="subscriptionEditor.regionFocus" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
+                    </div>
+                    <div class="cfg3-field">
+                      <label><i class="fa-solid fa-tags"></i> 业务标签关注 (智能适配专题)</label>
+                      <input v-model="subscriptionEditor.bizTagFocus" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else-if="subscriptionState.step === 2" class="cfg3-step-pane">
+                  <div class="cfg3-note-box">治理层决定“最终送达多少条”。频控按小时桶独立计算，去重窗口按真实事件时间连续计算，不会在跨小时清空。</div>
+                  <div class="cfg3-form-grid">
+                    <div class="cfg3-field">
+                      <label>去重键 (Deduplication Key)</label>
+                      <select v-model="subscriptionEditor.dedupKey" class="sub-select">
+                        <option value="不过滤 (每条独立推送)">不过滤 (每条独立推送)</option>
+                        <option value="作者+主题">作者+主题</option>
+                        <option value="正文哈希">正文哈希</option>
+                      </select>
+                    </div>
+                    <div class="cfg3-field">
+                      <label>去重时间窗 (分钟)</label>
+                      <input v-model.number="subscriptionEditor.dedupWindow" class="sub-input" type="number" min="0">
+                    </div>
+                  </div>
+                  <div class="cfg3-form-grid">
+                    <div class="cfg3-field">
+                      <label>频控：每小时最大推送</label>
+                      <input v-model.number="subscriptionEditor.rateLimit" class="sub-input" type="number" min="1">
+                    </div>
+                    <div class="cfg3-field">
+                      <label>超量后动作</label>
+                      <select v-model="subscriptionEditor.overflowAction" class="sub-select">
+                        <option value="静默丢弃">静默丢弃</option>
+                        <option value="摘要合并">摘要合并</option>
+                        <option value="降级推送">降级推送</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else-if="subscriptionState.step === 3" class="cfg3-step-pane">
+                  <div class="cfg3-two-panel">
+                    <div class="cfg3-inner-card">
+                      <h4><i class="fa-solid fa-users"></i> 内部收件人</h4>
+                      <div class="cfg3-field"><label>用户 ID</label><input v-model="subscriptionEditor.internalUserIds" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本"></div>
+                      <div class="cfg3-field"><label>用户组 ID</label><input v-model="subscriptionEditor.internalGroupIds" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本"></div>
+                    </div>
+                    <div class="cfg3-inner-card">
+                      <h4><i class="fa-solid fa-bullhorn"></i> 外部通道</h4>
+                      <label class="sub-check-chip" style="margin-bottom: 10px;"><input v-model="subscriptionEditor.externalDashboard" type="checkbox"><span>Dashboard 内展示</span></label>
+                      <div class="cfg3-field"><label>Webhook URLs</label><input v-model="subscriptionEditor.webhookUrls" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本"></div>
+                      <div class="cfg3-field"><label>Telegram IDs</label><input v-model="subscriptionEditor.telegramIds" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else class="cfg3-step-pane">
+                  <div class="cfg3-form-grid">
+                    <div class="cfg3-field">
+                      <label>责任人 (Owner) *</label>
+                      <input v-model="subscriptionEditor.owner" class="sub-input" placeholder="SystemAdmin">
+                    </div>
+                    <div class="cfg3-field">
+                      <label>优先级</label>
+                      <input v-model.number="subscriptionEditor.priority" class="sub-input" type="number" min="1" max="100">
+                    </div>
+                  </div>
+                  <div class="cfg3-field">
+                    <label>业务备注 / 摘要</label>
+                    <textarea v-model="subscriptionEditor.note" class="sub-textarea" placeholder="简述该规则目的、适用边界、已知误报/漏报、值班说明等"></textarea>
+                  </div>
+                  <div class="cfg3-channel-box">
+                    <div class="panel-line-title" style="margin-bottom: 10px;"><i class="fa-solid fa-lock"></i> 规则权限 (RBAC)</div>
+                    <div class="cfg3-form-grid">
+                      <div class="cfg3-field">
+                        <label>可见范围</label>
+                        <select v-model="subscriptionEditor.rbacVisibility" class="sub-select">
+                          <option value="仅自己">仅自己</option>
+                          <option value="本组">本组</option>
+                          <option value="全局">全局</option>
+                        </select>
+                      </div>
+                      <div class="cfg3-field">
+                        <label>编辑者 (IDs)</label>
+                        <input v-model="subscriptionEditor.editorIds" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="cfg3-side panel board-panel">
+                <div class="panel-line-title"><i class="fa-solid fa-flask-vial"></i> 实时沙箱引擎</div>
+
+                <div class="cfg3-kpi-grid">
+                  <div class="cfg3-kpi"><span>初筛命中</span><b>{{ subscriptionSandbox.hit }}</b></div>
+                  <div class="cfg3-kpi"><span>预计推送</span><b>{{ subscriptionSandbox.push }}</b></div>
+                  <div class="cfg3-kpi"><span>摘要组</span><b>{{ subscriptionSandbox.digest }}</b></div>
+                  <div class="cfg3-kpi"><span>治理拦截</span><b>{{ subscriptionSandbox.drop }}</b></div>
+                </div>
+
+                <div class="cfg3-warn">
+                  风险提示：沙箱结果是基于当前 mock 样本的静态模拟，不代表真实线上分布。
+                  建议点击下方「智能生成适配样本」快速验证规则逻辑。
+                </div>
+
+                <div class="cfg3-sim-title">模拟输入源 (Engine Output Mock)</div>
+                <div class="cfg3-sim-actions">
+                  <button class="cfg3-btn primary" @click="generateSmartSandboxSample"><i class="fa-solid fa-wand-magic-sparkles"></i>智能生成适配样本</button>
+                  <button class="cfg3-btn ghost" @click="loadBurstSandboxSample"><i class="fa-solid fa-wave-square"></i>加载爆发样本</button>
+                </div>
+
+                <textarea
+                  v-model="sandboxInputText"
+                  class="cfg3-json-input"
+                  spellcheck="false"
+                  @change="runSandboxFromInput"
+                  placeholder="在此编辑 Engine Output Mock JSON，修改后会重新执行沙箱。"></textarea>
+
+                <div class="cfg3-result-list">
+                  <div
+                    v-for="(item, idx) in sandboxEvents"
+                    :key="item.id"
+                    class="cfg3-hit-card"
+                    :class="item.state">
+                    <div class="cfg3-hit-title">#{{ idx + 1 }} ｜ {{ item.statusText }} ｜ {{ item.severity }} ｜ [{{ item.topic }}] ｜ {{ item.handle }}</div>
+                    <div class="cfg3-hit-line">实体：{{ item.entityType }}：{{ item.entityValue }}</div>
+                    <div class="cfg3-hit-line">治理键：{{ item.dedupKey }}</div>
+                    <div v-if="item.missReason" class="cfg3-hit-line">未命中原因：{{ item.missReason }}</div>
+                    <div v-if="item.blockReason" class="cfg3-hit-line">被治理拦截原因：{{ item.blockReason }}</div>
+                    <div class="cfg3-badge-row">
+                      <span v-for="badge in item.badges" :key="badge.text" class="cfg3-mini-badge" :class="badge.type">{{ badge.text }}</span>
+                    </div>
+                    <button class="cfg3-pill" @click="item.expanded = !item.expanded">{{ item.expanded ? '收起详情' : (item.state === 'match' ? '查看命中详情' : '查看未命中详情') }}</button>
+                    <pre v-if="item.expanded" class="cfg3-json-preview">{{ JSON.stringify(item.normalizedEvent, null, 2) }}</pre>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </template>
+
         <template v-else>
           <div class="board-grid">
             <div class="summary-card">
@@ -513,7 +785,7 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue';
+import { ref, computed, reactive, onMounted, watch } from 'vue';
 import AppHeader from '../components/AppHeader.vue';
 import { mockData } from '../mock/data.js';
 
@@ -580,6 +852,70 @@ const topicList = ref([
   { id: 4, name: '暴恐传播专题（归档）', owner: '张澜', keywordCount: 61, sourceCount: 3, hits: 411, status: '归档', lastRun: '2026-03-22 17:08', desc: '历史阶段专项，保留规则与样本用于复盘审计。' }
 ]);
 
+const SUBSCRIPTION_TOPICS = [
+  { id: 'TopicDrugs', name: '毒品交易' },
+  { id: 'TopicSmuggle', name: '非法走私' },
+  { id: 'TopicTerror', name: '恐怖暴力' },
+  { id: 'TopicDataLeak', name: '数据泄露' },
+  { id: 'TopicTaiwan', name: '台湾' },
+  { id: 'TopicRansom', name: '勒索软件' }
+];
+
+const subscriptionRules = ref([
+  {
+    id: 'sub-1',
+    name: '涉毒高危订阅',
+    owner: 'SystemAdmin',
+    enabled: true,
+    status: 'applied',
+    topics: ['TopicDrugs'],
+    minSeverity: 'HIGH',
+    riskMin: 75,
+    sources: ['Telegram', 'Tor'],
+    channels: ['Dashboard', 'Telegram'],
+    schedule: '每 15 分钟',
+    desc: '对涉毒高危线索进行实时订阅并转发值班组。',
+    updatedAt: toDateTimeString(new Date())
+  }
+]);
+
+const subscriptionState = reactive({
+  selectedId: 'sub-1',
+  search: '',
+  step: 1,
+  titleEditing: false,
+  titleBackup: ''
+});
+
+const subscriptionEditor = reactive({
+  name: '',
+  owner: '',
+  enabled: true,
+  status: 'draft',
+  topics: [],
+  minSeverity: 'HIGH',
+  riskMin: 70,
+  sources: ['Telegram'],
+  channels: ['Dashboard'],
+  schedule: '每 15 分钟',
+  desc: '',
+  regionFocus: '',
+  bizTagFocus: '',
+  dedupKey: '不过滤 (每条独立推送)',
+  dedupWindow: 30,
+  rateLimit: 50,
+  overflowAction: '静默丢弃',
+  internalUserIds: '',
+  internalGroupIds: 'g_riskOps',
+  externalDashboard: true,
+  webhookUrls: '',
+  telegramIds: '@ops_channel',
+  priority: 50,
+  note: '',
+  rbacVisibility: '仅自己',
+  editorIds: ''
+});
+
 // === 2. 集中化状态管理 (对应原版 APP_STATE) ===
 const state = reactive({
   activeModule: 'alerts',
@@ -610,6 +946,9 @@ const activeModuleMeta = computed(() => {
   }
   if (state.activeModule === 'monitor') {
     return { title: '专题监测', subtitle: '任务运行状态、覆盖率与命中趋势', countText: `${monitorTopics.value.length} 个监测任务` };
+  }
+  if (state.activeModule === 'subscription') {
+    return { title: '订阅监测', subtitle: '订阅路由与治理编排中枢', countText: `${subscriptionRules.value.length} 条订阅规则` };
   }
   if (state.activeModule === 'topicList') {
     return { title: '专题列表', subtitle: '专题资产管理与快速配置入口', countText: `${topicList.value.length} 个专题` };
@@ -778,6 +1117,9 @@ const toggleLeftSidebar = () => state.leftCollapsed = !state.leftCollapsed;
 const toggleRightSidebar = () => state.rightCollapsed = !state.rightCollapsed;
 const switchModule = (module) => {
   state.activeModule = module;
+  if (module === 'subscription') {
+    ensureSubscriptionSelection();
+  }
   if (module !== 'alerts') {
     state.isImmersive = false;
     state.leftCollapsed = false;
@@ -825,6 +1167,583 @@ const openTopicInAlerts = (topic) => {
   state.activeModule = 'alerts';
   state.searchQuery = topic.name;
   filters.topic = getTopicCodeByName(topic.name);
+};
+
+const filteredSubscriptionRules = computed(() => {
+  const keyword = (subscriptionState.search || '').toLowerCase().trim();
+  if (!keyword) return subscriptionRules.value;
+  return subscriptionRules.value.filter((rule) => {
+    const topicText = (rule.topics || []).map(getTopicName).join(' ');
+    const text = `${rule.name || ''} ${rule.owner || ''} ${rule.desc || ''} ${topicText}`.toLowerCase();
+    return text.includes(keyword);
+  });
+});
+
+const selectedSubscriptionRule = computed(() => {
+  return subscriptionRules.value.find((rule) => rule.id === subscriptionState.selectedId) || null;
+});
+
+const subscriptionSummary = computed(() => ({
+  total: subscriptionRules.value.length,
+  applied: subscriptionRules.value.filter((rule) => rule.status === 'applied').length,
+  draft: subscriptionRules.value.filter((rule) => rule.status !== 'applied').length,
+  monitorSync: monitorTopics.value.filter((item) => item.subscriptionRuleId).length
+}));
+
+const subscriptionSandboxStats = reactive({ hit: 0, push: 0, digest: 0, drop: 0 });
+const subscriptionSandbox = computed(() => ({ ...subscriptionSandboxStats }));
+
+const sandboxInputText = ref('');
+const sandboxEvents = ref([]);
+
+const severityWeight = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+const splitValues = (text = '') => String(text || '').split(/[，,|/\n]/).map(v => v.trim()).filter(Boolean);
+const dedupeKeyLabelToMode = {
+  '不过滤 (每条独立推送)': 'none',
+  '内容哈希': 'content_hash',
+  '实体聚合': 'entity',
+  '来源账号': 'source_handle'
+};
+
+const canonField = (field, value) => {
+  if (value === null || value === undefined) return value;
+  if (field === 'source_handle' || field === 'content_hash') return String(value).trim().toLowerCase();
+  if (field === 'severity') return String(value).trim().toUpperCase();
+  return typeof value === 'string' ? String(value).trim() : value;
+};
+
+const stableHash = (text) => {
+  const raw = String(text || '');
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) {
+    hash = Math.imul(31, hash) + raw.charCodeAt(i) | 0;
+  }
+  return String(Math.abs(hash));
+};
+
+const normalizeSandboxEvent = (raw) => {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const iocs = source.extracted_iocs && typeof source.extracted_iocs === 'object' ? source.extracted_iocs : {};
+  const labels = Array.isArray(source.labels)
+    ? source.labels.map(item => typeof item === 'string' ? item : item?.label).filter(Boolean)
+    : [];
+
+  return {
+    threat_category: source.threat_category || source.topic || source.category || '',
+    severity: canonField('severity', source.severity || 'LOW') || 'LOW',
+    risk_score: Number(source.risk_score ?? 0),
+    source_platform: source.source_platform || source.platform || '',
+    source_handle: source.source_handle || source.source || source.channel || '-',
+    entity_type: source.entity_type || source.entities?.[0]?.type || '-',
+    entity_value: source.entity_value || source.entities?.[0]?.value || '-',
+    labels,
+    ioc_location: Array.isArray(iocs.location) ? iocs.location : [],
+    raw_content: source.raw_content || source.content || '',
+    content_hash: canonField('content_hash', source.content_hash || stableHash(source.raw_content || JSON.stringify(source).slice(0, 3000))),
+    event_time: Number(source.timestamp || source.event_time || Date.now())
+  };
+};
+
+const buildSandboxInput = (mode = 'smart') => {
+  const topic = subscriptionEditor.topics[0] || 'TopicDrugs';
+  const source = subscriptionEditor.sources[0] || 'Telegram';
+  const baseRisk = Number(subscriptionEditor.riskMin || 70) || 70;
+  const region = splitValues(subscriptionEditor.regionFocus)[0] || '缅北';
+  const tag = splitValues(subscriptionEditor.bizTagFocus)[0] || '贩毒';
+
+  if (mode === 'burst') {
+    const arr = [];
+    const now = Date.now();
+    for (let i = 0; i < 12; i += 1) {
+      arr.push({
+        threat_category: topic,
+        severity: i % 5 === 0 ? 'CRITICAL' : 'HIGH',
+        risk_score: i % 4 === 0 ? Math.max(baseRisk + 10, 85) : Math.max(baseRisk + 3, 75),
+        source_platform: source,
+        source_handle: i % 3 === 0 ? '@smart_mock_hot' : '@smart_mock_01',
+        labels: [{ label: tag }, { label: '暗网担保' }],
+        extracted_iocs: { location: [region] },
+        entity_type: 'wallet',
+        entity_value: `TXYZ_SMART_${100 + i}`,
+        raw_content: `模拟爆发样本 ${i + 1}：高频命中，用于验证去重与频控。`,
+        event_time: now + i * 20 * 60 * 1000
+      });
+    }
+    return arr;
+  }
+
+  return [
+    {
+      threat_category: topic,
+      severity: subscriptionEditor.minSeverity,
+      risk_score: Math.max(baseRisk + 8, 80),
+      source_platform: source,
+      source_handle: '@smart_mock_01',
+      labels: [{ label: tag }, { label: '暗网担保' }],
+      extracted_iocs: { location: [region] },
+      entity_type: 'wallet',
+      entity_value: 'TXYZ_SMART_01',
+      raw_content: '此数据旨在覆盖当前规则阈值，预期应命中并触发推送。',
+      event_time: Date.now()
+    },
+    {
+      threat_category: topic,
+      severity: 'LOW',
+      risk_score: Math.max(15, baseRisk - 35),
+      source_platform: source,
+      source_handle: '@smart_mock_02',
+      labels: [{ label: '无关样本' }],
+      extracted_iocs: { location: ['未知'] },
+      entity_type: 'wallet',
+      entity_value: 'TXYZ_SMART_02',
+      raw_content: '此数据旨在模拟低危、低分、无关键标签等条件【不命中】。',
+      event_time: Date.now() + 120000
+    }
+  ];
+};
+
+const evaluateSandboxEvent = (ev) => {
+  const minSeverity = subscriptionEditor.minSeverity || 'HIGH';
+  const minRisk = Number(subscriptionEditor.riskMin || 70);
+  const matchTopic = !(subscriptionEditor.topics || []).length || (subscriptionEditor.topics || []).includes(ev.threat_category);
+  const matchSource = !(subscriptionEditor.sources || []).length || (subscriptionEditor.sources || []).includes(ev.source_platform);
+  const matchSeverity = (severityWeight[ev.severity] || 0) >= (severityWeight[minSeverity] || 0);
+  const matchRisk = Number(ev.risk_score || 0) >= minRisk;
+  const regionFilters = splitValues(subscriptionEditor.regionFocus).map(v => v.toLowerCase());
+  const labelFilters = splitValues(subscriptionEditor.bizTagFocus).map(v => v.toLowerCase());
+  const locTexts = (ev.ioc_location || []).map(v => String(v).toLowerCase());
+  const labelTexts = (ev.labels || []).map(v => String(v).toLowerCase());
+  const rawText = String(ev.raw_content || '').toLowerCase();
+  const matchRegion = !regionFilters.length || regionFilters.some(v => locTexts.includes(v));
+  const matchLabel = !labelFilters.length || labelFilters.some(v => labelTexts.includes(v) || rawText.includes(v));
+  const pass = matchTopic && matchSource && matchSeverity && matchRisk && matchRegion && matchLabel;
+
+  const failReason = !matchTopic
+    ? '专题未命中'
+    : !matchSource
+      ? '来源未命中'
+      : !matchSeverity
+        ? '等级不足'
+        : !matchRisk
+          ? '风险分不足'
+          : !matchRegion
+            ? '地域未命中'
+            : !matchLabel
+              ? '业务标签未命中'
+              : '未满足规则条件';
+
+  return {
+    pass,
+    missReason: pass ? '' : failReason,
+    trace: {
+      topic: matchTopic,
+      source: matchSource,
+      severity: matchSeverity,
+      risk: matchRisk,
+      region: matchRegion,
+      label: matchLabel
+    }
+  };
+};
+
+const computeSandboxDedupeKey = (ev) => {
+  const mode = dedupeKeyLabelToMode[subscriptionEditor.dedupKey] || 'none';
+  if (mode === 'content_hash') return `h:${ev.content_hash || ''}`;
+  if (mode === 'entity') return `e:${ev.entity_type || ''}:${ev.entity_value || ''}`;
+  if (mode === 'source_handle') return `s:${canonField('source_handle', ev.source_handle || '')}`;
+  return '无去重键';
+};
+
+const simulateGovernance = (passedEvents) => {
+  const delivered = [];
+  const dropped = [];
+  const digests = [];
+
+  const dedupeWindowMs = Math.max(0, Number(subscriptionEditor.dedupWindow || 0)) * 60 * 1000;
+  const rateLimit = Math.max(0, Number(subscriptionEditor.rateLimit || 0));
+  const overflowToDigest = subscriptionEditor.overflowAction === '摘要合并';
+
+  const dedupeCache = new Map();
+  const hourCounter = new Map();
+  const digestCounter = new Map();
+
+  const sorted = [...passedEvents].sort((a, b) => (a.event_time || 0) - (b.event_time || 0));
+  sorted.forEach((ev) => {
+    const dedupeKey = computeSandboxDedupeKey(ev);
+    if (dedupeKey !== '无去重键' && dedupeWindowMs > 0) {
+      const lastAt = dedupeCache.get(dedupeKey) || 0;
+      if (ev.event_time - lastAt < dedupeWindowMs) {
+        dropped.push({ event: ev, reason: 'dedupe_window' });
+        return;
+      }
+      dedupeCache.set(dedupeKey, ev.event_time);
+    }
+
+    const hourBucket = Math.floor((ev.event_time || Date.now()) / (60 * 60 * 1000));
+    const sent = hourCounter.get(hourBucket) || 0;
+    if (rateLimit > 0 && sent >= rateLimit) {
+      if (overflowToDigest) {
+        digestCounter.set(hourBucket, (digestCounter.get(hourBucket) || 0) + 1);
+        dropped.push({ event: ev, reason: 'rate_limit_digest', hourBucket });
+        return;
+      }
+      dropped.push({ event: ev, reason: 'rate_limit_drop', hourBucket });
+      return;
+    }
+
+    hourCounter.set(hourBucket, sent + 1);
+    delivered.push({ event: ev, hourBucket });
+  });
+
+  digestCounter.forEach((count, hourBucket) => {
+    digests.push({ hourBucket, count });
+  });
+
+  return { delivered, dropped, digests };
+};
+
+const runSandboxFromInput = () => {
+  try {
+    const parsed = JSON.parse(sandboxInputText.value || '[]');
+    const rawEvents = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.events) ? parsed.events : []);
+    const normalizedEvents = rawEvents.map(ev => normalizeSandboxEvent(ev));
+
+    const evals = normalizedEvents.map(ev => ({ event: ev, result: evaluateSandboxEvent(ev) }));
+    const passed = evals.filter(item => item.result.pass).map(item => item.event);
+    const gov = simulateGovernance(passed);
+
+    subscriptionSandboxStats.hit = passed.length;
+    subscriptionSandboxStats.push = gov.delivered.length;
+    subscriptionSandboxStats.digest = gov.digests.length;
+    subscriptionSandboxStats.drop = gov.dropped.length;
+
+    sandboxEvents.value = normalizedEvents.map((ev, idx) => {
+      const result = evals[idx].result;
+      const delivered = gov.delivered.find(x => x.event === ev);
+      const blocks = gov.dropped.filter(x => x.event === ev);
+      const dedupKey = computeSandboxDedupeKey(ev);
+
+      const state = delivered ? 'match' : (result.pass && blocks.length ? 'block' : 'miss');
+      const statusText = delivered ? '✅ 已推送' : (result.pass && blocks.length ? '⚠️ 命中但被治理拦截' : '❌ 未命中');
+      const blockReason = blocks.some(b => b.reason === 'dedupe_window')
+        ? '命中去重窗，重复样本被拦截'
+        : blocks.some(b => b.reason === 'rate_limit_digest')
+          ? '超过频控上限，转为摘要合并'
+          : blocks.some(b => b.reason === 'rate_limit_drop')
+            ? '超过频控上限，执行静默丢弃'
+            : '';
+
+      const badges = [];
+      if (delivered) badges.push({ type: 'ok', text: `小时桶 ${delivered.hourBucket}` });
+      if (blocks.some(b => b.reason === 'dedupe_window')) badges.push({ type: 'warn', text: '去重窗拦截' });
+      if (blocks.some(b => b.reason === 'rate_limit_digest')) badges.push({ type: 'warn', text: '超量转摘要' });
+      if (blocks.some(b => b.reason === 'rate_limit_drop')) badges.push({ type: 'bad', text: '超量丢弃' });
+      if (!result.pass) badges.push({ type: 'neutral', text: '初筛未命中' });
+
+      return {
+        id: `${Date.now()}-${idx}`,
+        state,
+        statusText,
+        topic: ev.threat_category || '-',
+        severity: ev.severity || '-',
+        handle: ev.source_handle || '-',
+        entityType: ev.entity_type || '-',
+        entityValue: ev.entity_value || '-',
+        dedupKey,
+        missReason: result.missReason,
+        blockReason,
+        badges,
+        expanded: idx === 0,
+        normalizedEvent: {
+          normalized_event: ev,
+          trace: result.trace,
+          routing: {
+            channels: subscriptionEditor.channels,
+            schedule: subscriptionEditor.schedule,
+            overflow_action: subscriptionEditor.overflowAction
+          }
+        }
+      };
+    });
+
+    if (!sandboxEvents.value.length) {
+      subscriptionSandboxStats.hit = 0;
+      subscriptionSandboxStats.push = 0;
+      subscriptionSandboxStats.digest = 0;
+      subscriptionSandboxStats.drop = 0;
+    }
+  } catch (error) {
+    subscriptionSandboxStats.hit = 0;
+    subscriptionSandboxStats.push = 0;
+    subscriptionSandboxStats.digest = 0;
+    subscriptionSandboxStats.drop = 0;
+    sandboxEvents.value = [{
+      id: `err-${Date.now()}`,
+      state: 'bad',
+      statusText: '❌ JSON 解析失败',
+      topic: '-',
+      severity: '-',
+      handle: '-',
+      entityType: '-',
+      entityValue: '-',
+      dedupKey: '-',
+      missReason: `JSON 格式错误：${error?.message || '未知错误'}`,
+      blockReason: '',
+      badges: [{ type: 'bad', text: '请修复输入 JSON' }],
+      expanded: false,
+      normalizedEvent: {}
+    }];
+  }
+};
+
+const generateSmartSandboxSample = () => {
+  sandboxInputText.value = JSON.stringify(buildSandboxInput('smart'), null, 2);
+  runSandboxFromInput();
+};
+
+const loadBurstSandboxSample = () => {
+  sandboxInputText.value = JSON.stringify(buildSandboxInput('burst'), null, 2);
+  runSandboxFromInput();
+};
+
+watch(
+  () => [
+    subscriptionEditor.topics.join('|'),
+    subscriptionEditor.sources.join('|'),
+    subscriptionEditor.minSeverity,
+    subscriptionEditor.riskMin,
+    subscriptionEditor.regionFocus,
+    subscriptionEditor.bizTagFocus,
+    subscriptionEditor.dedupKey,
+    subscriptionEditor.dedupWindow,
+    subscriptionEditor.rateLimit,
+    subscriptionEditor.overflowAction,
+    subscriptionEditor.enabled
+  ],
+  () => {
+    if (!sandboxInputText.value) return;
+    runSandboxFromInput();
+  }
+);
+
+const ensureSubscriptionSelection = () => {
+  if (!subscriptionRules.value.length) {
+    createSubscriptionRule();
+    return;
+  }
+  if (!subscriptionState.selectedId || !selectedSubscriptionRule.value) {
+    subscriptionState.selectedId = subscriptionRules.value[0].id;
+  }
+  syncSubscriptionEditor();
+  if (!sandboxInputText.value) {
+    generateSmartSandboxSample();
+  }
+};
+
+const syncSubscriptionEditor = () => {
+  const rule = selectedSubscriptionRule.value;
+  if (!rule) return;
+  subscriptionEditor.name = rule.name || '';
+  subscriptionEditor.owner = rule.owner || '';
+  subscriptionEditor.enabled = !!rule.enabled;
+  subscriptionEditor.status = rule.status || 'draft';
+  subscriptionEditor.topics = [...(rule.topics || [])];
+  subscriptionEditor.minSeverity = rule.minSeverity || 'HIGH';
+  subscriptionEditor.riskMin = Number(rule.riskMin ?? 70);
+  subscriptionEditor.sources = [...(rule.sources || [])];
+  subscriptionEditor.channels = [...(rule.channels || [])];
+  subscriptionEditor.schedule = rule.schedule || '每 15 分钟';
+  subscriptionEditor.desc = rule.desc || '';
+  subscriptionEditor.regionFocus = rule.regionFocus || '';
+  subscriptionEditor.bizTagFocus = rule.bizTagFocus || '';
+  subscriptionEditor.dedupKey = rule.dedupKey || '不过滤 (每条独立推送)';
+  subscriptionEditor.dedupWindow = Number(rule.dedupWindow ?? 30);
+  subscriptionEditor.rateLimit = Number(rule.rateLimit ?? 50);
+  subscriptionEditor.overflowAction = rule.overflowAction || '静默丢弃';
+  subscriptionEditor.internalUserIds = rule.internalUserIds || '';
+  subscriptionEditor.internalGroupIds = rule.internalGroupIds || 'g_riskOps';
+  subscriptionEditor.externalDashboard = rule.externalDashboard !== false;
+  subscriptionEditor.webhookUrls = rule.webhookUrls || '';
+  subscriptionEditor.telegramIds = rule.telegramIds || '@ops_channel';
+  subscriptionEditor.priority = Number(rule.priority ?? 50);
+  subscriptionEditor.note = rule.note || '';
+  subscriptionEditor.rbacVisibility = rule.rbacVisibility || '仅自己';
+  subscriptionEditor.editorIds = rule.editorIds || '';
+};
+
+const persistSubscriptionEditor = () => {
+  const rule = selectedSubscriptionRule.value;
+  if (!rule) return null;
+  rule.name = (subscriptionEditor.name || '').trim();
+  rule.owner = (subscriptionEditor.owner || '').trim();
+  rule.enabled = !!subscriptionEditor.enabled;
+  rule.topics = [...(subscriptionEditor.topics || [])];
+  rule.minSeverity = subscriptionEditor.minSeverity || 'HIGH';
+  rule.riskMin = Number(subscriptionEditor.riskMin || 0);
+  rule.sources = [...(subscriptionEditor.sources || [])];
+  rule.channels = [...(subscriptionEditor.channels || [])];
+  rule.schedule = subscriptionEditor.schedule || '每 15 分钟';
+  rule.desc = (subscriptionEditor.desc || '').trim();
+  rule.regionFocus = (subscriptionEditor.regionFocus || '').trim();
+  rule.bizTagFocus = (subscriptionEditor.bizTagFocus || '').trim();
+  rule.dedupKey = subscriptionEditor.dedupKey || '不过滤 (每条独立推送)';
+  rule.dedupWindow = Number(subscriptionEditor.dedupWindow || 0);
+  rule.rateLimit = Number(subscriptionEditor.rateLimit || 0);
+  rule.overflowAction = subscriptionEditor.overflowAction || '静默丢弃';
+  rule.internalUserIds = (subscriptionEditor.internalUserIds || '').trim();
+  rule.internalGroupIds = (subscriptionEditor.internalGroupIds || '').trim();
+  rule.externalDashboard = !!subscriptionEditor.externalDashboard;
+  rule.webhookUrls = (subscriptionEditor.webhookUrls || '').trim();
+  rule.telegramIds = (subscriptionEditor.telegramIds || '').trim();
+  rule.priority = Number(subscriptionEditor.priority || 50);
+  rule.note = (subscriptionEditor.note || '').trim();
+  rule.rbacVisibility = subscriptionEditor.rbacVisibility || '仅自己';
+  rule.editorIds = (subscriptionEditor.editorIds || '').trim();
+  rule.updatedAt = toDateTimeString(new Date());
+  return rule;
+};
+
+const validateSubscriptionEditor = () => {
+  if (!(subscriptionEditor.name || '').trim()) return '规则名称不能为空';
+  if (!(subscriptionEditor.owner || '').trim()) return '责任人不能为空';
+  if (!(subscriptionEditor.topics || []).length) return '至少选择一个监测专题';
+  if (!(subscriptionEditor.sources || []).length) return '至少选择一个监测来源';
+  if (!(subscriptionEditor.channels || []).length) return '至少选择一个分发通道';
+  return '';
+};
+
+const selectSubscriptionRule = (ruleId) => {
+  subscriptionState.selectedId = ruleId;
+  subscriptionState.titleEditing = false;
+  syncSubscriptionEditor();
+  generateSmartSandboxSample();
+};
+
+const startSubscriptionTitleEdit = () => {
+  subscriptionState.titleBackup = subscriptionEditor.name || '';
+  subscriptionState.titleEditing = true;
+};
+
+const finishSubscriptionTitleEdit = () => {
+  const name = (subscriptionEditor.name || '').trim();
+  subscriptionEditor.name = name || '未命名订阅';
+  const rule = selectedSubscriptionRule.value;
+  if (rule) {
+    rule.name = subscriptionEditor.name;
+    rule.updatedAt = toDateTimeString(new Date());
+  }
+  subscriptionState.titleEditing = false;
+};
+
+const cancelSubscriptionTitleEdit = () => {
+  subscriptionEditor.name = subscriptionState.titleBackup;
+  subscriptionState.titleEditing = false;
+};
+
+const createSubscriptionRule = () => {
+  const id = `sub-${Date.now()}`;
+  const rule = {
+    id,
+    name: '新建订阅规则',
+    owner: '',
+    enabled: true,
+    status: 'draft',
+    topics: [],
+    minSeverity: 'HIGH',
+    riskMin: 70,
+    sources: ['Telegram'],
+    channels: ['Dashboard'],
+    schedule: '每 15 分钟',
+    desc: '',
+    regionFocus: '',
+    bizTagFocus: '',
+    dedupKey: '不过滤 (每条独立推送)',
+    dedupWindow: 30,
+    rateLimit: 50,
+    overflowAction: '静默丢弃',
+    internalUserIds: '',
+    internalGroupIds: 'g_riskOps',
+    externalDashboard: true,
+    webhookUrls: '',
+    telegramIds: '@ops_channel',
+    priority: 50,
+    note: '',
+    rbacVisibility: '仅自己',
+    editorIds: '',
+    updatedAt: toDateTimeString(new Date())
+  };
+  subscriptionRules.value.unshift(rule);
+  subscriptionState.selectedId = id;
+  syncSubscriptionEditor();
+};
+
+const saveSubscriptionDraft = () => {
+  const err = validateSubscriptionEditor();
+  if (err) {
+    alertMock(err);
+    return;
+  }
+  const rule = persistSubscriptionEditor();
+  if (!rule) return;
+  rule.status = 'draft';
+  generateSmartSandboxSample();
+  alertMock('订阅规则草稿已保存');
+};
+
+const upsertMonitorTaskFromSubscription = (rule) => {
+  const matched = monitorTopics.value.find((item) => item.subscriptionRuleId === rule.id);
+  const task = {
+    name: `订阅监测｜${rule.name}`,
+    status: rule.enabled ? '运行中' : '已暂停',
+    schedule: rule.schedule,
+    coverage: Math.min(98, 55 + (rule.topics.length * 8) + (rule.sources.length * 4)),
+    hits24h: Math.max(6, Math.round(subscriptionSandbox.value.hit * 0.5)),
+    pendingReview: Math.max(1, Math.round(subscriptionSandbox.value.drop * 0.2)),
+    sources: [...rule.sources]
+  };
+
+  if (matched) {
+    Object.assign(matched, task);
+    return;
+  }
+
+  monitorTopics.value.unshift({
+    id: Date.now(),
+    subscriptionRuleId: rule.id,
+    ...task
+  });
+};
+
+const publishSubscriptionRule = () => {
+  const err = validateSubscriptionEditor();
+  if (err) {
+    alertMock(err);
+    return;
+  }
+  const rule = persistSubscriptionEditor();
+  if (!rule) return;
+  rule.status = 'applied';
+  upsertMonitorTaskFromSubscription(rule);
+  alertMock(`订阅规则已发布：将对 ${rule.topics.map(getTopicName).join(' / ')} 执行监测`);
+};
+
+const deleteSubscriptionRule = () => {
+  const rule = selectedSubscriptionRule.value;
+  if (!rule) return;
+  if (!confirm('确定删除当前订阅规则吗？')) return;
+  subscriptionRules.value = subscriptionRules.value.filter((item) => item.id !== rule.id);
+  monitorTopics.value = monitorTopics.value.filter((item) => item.subscriptionRuleId !== rule.id);
+  subscriptionState.selectedId = subscriptionRules.value[0]?.id || '';
+  ensureSubscriptionSelection();
+};
+
+const openSubscriptionInAlerts = (rule) => {
+  if (!rule) return;
+  resetAlertFiltersByPreset();
+  state.activeModule = 'alerts';
+  filters.topic = rule.topics[0] || 'all';
+  filters.media = rule.sources[0] || 'all';
+  state.searchQuery = rule.name || '';
 };
 const toggleImmersiveMode = () => {
   state.isImmersive = !state.isImmersive;
@@ -932,6 +1851,8 @@ const generateDonutData = (dataKey, nameResolver) => {
 };
 const topicChartData = computed(() => generateDonutData('topic', getTopicName));
 const industryChartData = computed(() => generateDonutData('industry', getIndustryName));
+
+ensureSubscriptionSelection();
 </script>
 
 <style scoped>
@@ -1065,6 +1986,7 @@ const industryChartData = computed(() => generateDonutData('industry', getIndust
 .status-badge { font-size: 11px; padding: 2px 8px; border: 1px solid; border-radius: 999px; }
 .status-badge.on { color: #86efac; border-color: #10b981; background: rgba(16,185,129,.15); }
 .status-badge.off { color: #fdba74; border-color: #f97316; background: rgba(249,115,22,.15); }
+.status-badge.stop { color: #fca5a5; border-color: #ef4444; background: rgba(239,68,68,.15); }
 .status-badge.archive { color: #94a3b8; border-color: #64748b; background: rgba(100,116,139,.15); }
 .monitor-hit, .monitor-pending { color: #9fb8da; font-size: 12px; }
 .monitor-actions { display: flex; gap: 8px; margin-top: 2px; }
@@ -1085,6 +2007,519 @@ const industryChartData = computed(() => generateDonutData('industry', getIndust
 .topic-desc { color: #9fb0c9; font-size: 12px; line-height: 1.55; }
 .topic-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: #8ea5c4; font-size: 12px; }
 .topic-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+.subscription-grid { min-height: 0; }
+.cfg3-shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 260px minmax(560px, 1fr) 340px;
+  gap: 10px;
+}
+.cfg3-left, .cfg3-main, .cfg3-side { min-height: 0; }
+.cfg3-left { display: flex; flex-direction: column; overflow: hidden; }
+.cfg3-main { display: flex; flex-direction: column; overflow-y: auto; }
+.cfg3-side { display: flex; flex-direction: column; overflow-y: auto; }
+
+.cfg3-left-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cfg3-left .panel-line-title { margin-bottom: 0; border-bottom: 0; padding-bottom: 0; }
+.cfg3-left .sub-list-toolbar { margin-top: 8px; margin-bottom: 8px; }
+
+.cfg3-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.cfg3-toolbar-title { display: flex; align-items: center; gap: 8px; color: #dbeafe; font-weight: 700; font-size: 15px; }
+.cfg3-toolbar-title i { color: var(--accent-blue); }
+.cfg3-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.cfg3-btn {
+  border: 1px solid rgba(71, 93, 132, 0.75);
+  background: rgba(15, 23, 41, 0.65);
+  color: #dbeafe;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: .2s;
+}
+.cfg3-btn i { margin-right: 6px; }
+.cfg3-btn.ghost:hover { border-color: var(--accent-blue); color: #fff; }
+.cfg3-btn.primary { background: linear-gradient(90deg, rgba(59,130,246,.92), rgba(37,99,235,.92)); border-color: #3b82f6; color: #fff; }
+.cfg3-btn.primary:hover { filter: brightness(1.08); }
+.cfg3-btn.danger { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.65); color: #fecaca; }
+.cfg3-btn.danger:hover { background: rgba(239,68,68,.35); color: #fff; }
+
+.cfg3-headline {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+.cfg3-title-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cfg3-headline h3 { margin: 0; color: #f8fafc; font-size: 22px; line-height: 1.12; letter-spacing: .1px; }
+.cfg3-headline h3 { cursor: text; }
+.cfg3-title-input {
+  height: 42px;
+  min-width: 360px;
+  border: 1px solid rgba(71, 93, 132, 0.75);
+  border-radius: 8px;
+  background: rgba(20, 31, 55, 0.8);
+  color: #f8fafc;
+  font-size: 22px;
+  font-weight: 700;
+  padding: 0 12px;
+}
+.cfg3-title-input:focus { outline: none; border-color: #3b82f6; }
+.cfg3-title-edit-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(71, 93, 132, 0.75);
+  border-radius: 6px;
+  background: rgba(15, 23, 41, 0.75);
+  color: #9fb8da;
+  cursor: pointer;
+  transition: .2s;
+}
+.cfg3-title-edit-btn:hover { color: #fff; border-color: #3b82f6; }
+.cfg3-headline p { margin: 6px 0 0; color: #9fb0c9; font-size: 12px; }
+.cfg3-divider { margin: 0 6px; color: #64748b; }
+.cfg3-enable-select {
+  height: 38px;
+  min-width: 120px;
+  border: 1px solid rgba(71, 93, 132, 0.7);
+  background: rgba(20, 30, 54, 0.8);
+  color: #dbeafe;
+  border-radius: 6px;
+  padding: 0 10px;
+  font-weight: 600;
+}
+.cfg3-enable-select.is-enabled {
+  border-color: rgba(16, 185, 129, 0.75);
+  color: #86efac;
+  background: rgba(16, 185, 129, 0.08);
+}
+.cfg3-enable-select.is-disabled {
+  border-color: rgba(239, 68, 68, 0.75);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.08);
+}
+.cfg3-enable-tag {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid;
+  border-radius: 999px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.cfg3-enable-tag.enabled {
+  color: #86efac;
+  border-color: rgba(16, 185, 129, 0.75);
+  background: rgba(16, 185, 129, 0.14);
+}
+.cfg3-enable-tag.disabled {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.75);
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.cfg3-steps {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.cfg3-step {
+  appearance: none;
+  border: 1px solid rgba(71, 93, 132, 0.45);
+  text-align: left;
+  border: 1px solid rgba(71, 93, 132, 0.45);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(14, 22, 40, 0.72);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  position: relative;
+  transition: .2s;
+}
+.cfg3-step small { color: #7c93b3; font-size: 11px; }
+.cfg3-step b { color: #dbeafe; font-size: 16px; line-height: 1.1; }
+.cfg3-step span { color: #8ea5c4; font-size: 12px; }
+.cfg3-step.active { border-color: rgba(59,130,246,.65); box-shadow: inset 0 -2px 0 rgba(59,130,246,.85); background: rgba(20,38,78,.22); }
+.cfg3-step-dot {
+  position: absolute;
+  right: 14px;
+  top: 12px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(59,130,246,.2);
+}
+.cfg3-step.active .cfg3-step-dot {
+  background: #3b82f6;
+  box-shadow: 0 0 10px rgba(59,130,246,.7);
+}
+
+.cfg3-step-pane { margin-top: 10px; }
+.cfg3-note-box {
+  border: 1px solid rgba(71, 93, 132, 0.45);
+  border-radius: 8px;
+  background: rgba(28, 45, 84, 0.35);
+  color: #9fb0c9;
+  font-size: 15px;
+  line-height: 1.7;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+}
+.cfg3-two-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.cfg3-inner-card {
+  border: 1px solid rgba(71, 93, 132, 0.4);
+  border-radius: 8px;
+  background: rgba(14, 22, 40, 0.68);
+  padding: 14px;
+}
+.cfg3-inner-card h4 {
+  margin: 0 0 12px;
+  color: #dbeafe;
+  font-size: 20px;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding-bottom: 10px;
+}
+.cfg3-inner-card h4 i { font-size: 18px; color: #cbd5e1; }
+
+.cfg3-mode-switch {
+  margin-top: 12px;
+  display: inline-flex;
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  border-radius: 999px;
+  padding: 3px;
+  background: rgba(10, 18, 35, 0.8);
+  width: fit-content;
+}
+.cfg3-mode-switch button {
+  border: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: transparent;
+  color: #8ea5c4;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cfg3-mode-switch button.active { color: #fff; background: linear-gradient(90deg, rgba(236,72,153,.75), rgba(59,130,246,.7)); }
+
+.cfg3-section-title { margin-top: 12px; margin-bottom: 8px; font-size: 13px; color: #93c5fd; display: flex; align-items: center; gap: 6px; }
+.cfg3-topic-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cfg3-topic {
+  border: 1px solid rgba(71, 93, 132, 0.55);
+  background: rgba(15, 23, 41, 0.7);
+  color: #9fb8da;
+  border-radius: 8px;
+  min-height: 66px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.cfg3-topic i { font-size: 16px; }
+.cfg3-topic span { font-size: 14px; }
+.cfg3-topic.active { color: #86efac; border-color: rgba(16,185,129,.7); background: rgba(16,185,129,.14); }
+
+.cfg3-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.cfg3-bottom-grid { margin-top: 10px; }
+.cfg3-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.cfg3-field label { color: #9fb0c9; font-size: 12px; display: flex; gap: 6px; align-items: center; }
+.cfg3-channel-box {
+  margin-top: 8px;
+  border: 1px solid rgba(71, 93, 132, 0.4);
+  border-radius: 8px;
+  background: rgba(15, 23, 41, 0.58);
+  padding: 10px;
+}
+
+.sub-list-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
+.sub-search { width: 100%; }
+.sub-rule-list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.sub-rule-item {
+  border: 1px solid rgba(71, 93, 132, 0.55);
+  background: rgba(12, 20, 38, 0.75);
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  transition: .2s;
+}
+.sub-rule-item:hover { border-color: var(--accent-blue); }
+.sub-rule-item.active {
+  border-color: var(--accent-green);
+  background: rgba(16, 185, 129, 0.12);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.22);
+}
+.sub-rule-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.sub-rule-title { color: #e2e8f0; font-size: 14px; font-weight: 700; }
+.sub-rule-meta { color: #8ea5c4; font-size: 12px; margin-top: 6px; line-height: 1.45; }
+.sub-rule-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11px; color: #94a3b8; }
+
+.cfg3-main .sub-rule-list,
+.cfg3-side .sub-rule-list,
+.cfg3-left .sub-rule-list { flex: 1; }
+
+.sub-input, .sub-select {
+  width: 100%;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  background: rgba(15, 23, 41, 0.75);
+  color: #e2e8f0;
+  padding: 0 10px;
+}
+.sub-select:focus, .sub-input:focus, .sub-textarea:focus { border-color: var(--accent-blue); outline: none; }
+.sub-textarea {
+  width: 100%;
+  min-height: 72px;
+  border-radius: 6px;
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  background: rgba(15, 23, 41, 0.75);
+  color: #e2e8f0;
+  padding: 10px;
+  resize: vertical;
+}
+.sub-block {
+  margin-bottom: 10px;
+  border: 1px solid rgba(71, 93, 132, 0.4);
+  border-radius: 8px;
+  background: rgba(15, 23, 41, 0.65);
+  padding: 10px;
+}
+.sub-block-title { font-size: 12px; color: #bfdbfe; margin-bottom: 8px; display: flex; gap: 6px; align-items: center; }
+.sub-chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.sub-check-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  padding: 4px 10px;
+  background: rgba(20, 32, 58, 0.7);
+  color: #cbd5e1;
+  font-size: 12px;
+}
+.sub-check-chip input { accent-color: var(--accent-blue); }
+.sub-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.chip-btn.danger {
+  border-color: rgba(239, 68, 68, 0.7);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.08);
+}
+.chip-btn.danger:hover { border-color: #ef4444; color: #fff; background: rgba(239, 68, 68, 0.2); }
+
+.sub-sandbox-metric { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.sub-metric-box {
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(14, 22, 40, 0.75);
+  text-align: center;
+}
+.sub-metric-box div { font-size: 12px; color: #94a3b8; }
+.sub-metric-box b { display: block; margin-top: 6px; color: #dbeafe; font-size: 22px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.sub-hint {
+  margin-bottom: 10px;
+  border-left: 3px solid var(--accent-blue);
+  background: rgba(59,130,246,.1);
+  padding: 10px;
+  border-radius: 6px;
+  color: #bfdbfe;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.sub-preview-card {
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  border-radius: 8px;
+  background: rgba(14, 22, 40, 0.75);
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.sub-preview-title { font-size: 13px; color: #e2e8f0; margin-bottom: 8px; font-weight: 700; }
+.sub-preview-line {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+}
+.sub-preview-line span { color: #94a3b8; }
+.sub-preview-line b { color: #dbeafe; word-break: break-word; }
+
+
+.cfg3-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.cfg3-kpi {
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  border-radius: 8px;
+  background: rgba(14, 22, 40, 0.75);
+  padding: 10px;
+  text-align: center;
+}
+.cfg3-kpi span { font-size: 12px; color: #8ea5c4; }
+.cfg3-kpi b { display: block; margin-top: 6px; font-size: 28px; line-height: 1; font-weight: 800; }
+.cfg3-kpi:nth-child(1) b { color: #34d399; text-shadow: 0 0 10px rgba(52, 211, 153, 0.35); }
+.cfg3-kpi:nth-child(2) b { color: #60a5fa; text-shadow: 0 0 10px rgba(96, 165, 250, 0.35); }
+.cfg3-kpi:nth-child(3) b { color: #f59e0b; text-shadow: 0 0 10px rgba(245, 158, 11, 0.35); }
+.cfg3-kpi:nth-child(4) b { color: #94a3b8; text-shadow: 0 0 10px rgba(148, 163, 184, 0.3); }
+
+.cfg3-warn {
+  border: 1px solid rgba(249,115,22,.45);
+  background: rgba(249,115,22,.1);
+  border-radius: 8px;
+  padding: 10px;
+  color: #fdba74;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cfg3-sim-title { margin: 10px 0 8px; color: #dbeafe; font-size: 14px; font-weight: 700; }
+.cfg3-sim-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.cfg3-json-preview {
+  margin: 0 0 8px;
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  border-radius: 8px;
+  background: rgba(15, 23, 41, 0.92);
+  color: #c7d2fe;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px;
+  max-height: 210px;
+  overflow: auto;
+}
+
+.cfg3-json-input {
+  width: 100%;
+  min-height: 160px;
+  border: 1px solid rgba(71, 93, 132, 0.65);
+  border-radius: 8px;
+  background: rgba(30, 43, 70, 0.72);
+  color: #dbeafe;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  resize: vertical;
+  margin-bottom: 10px;
+}
+.cfg3-json-input:focus { outline: none; border-color: #3b82f6; }
+
+.cfg3-result-list { display: flex; flex-direction: column; gap: 10px; }
+
+.cfg3-hit-card {
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  border-radius: 8px;
+  background: rgba(10, 17, 32, 0.86);
+  padding: 10px;
+}
+.cfg3-hit-card.hit {
+  border-color: rgba(52, 211, 153, 0.55);
+  background: rgba(16, 74, 58, 0.22);
+}
+.cfg3-hit-card.miss {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(80, 23, 42, 0.16);
+}
+.cfg3-hit-card.block {
+  border-color: rgba(249, 115, 22, 0.45);
+  background: rgba(99, 56, 21, 0.2);
+}
+.cfg3-hit-card.bad {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(127, 29, 29, 0.26);
+}
+.cfg3-hit-title { color: #dbeafe; font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.cfg3-hit-line { color: #8ea5c4; font-size: 12px; margin-bottom: 4px; }
+.cfg3-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.cfg3-mini-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(100, 116, 139, 0.5);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1;
+  color: #cbd5e1;
+  background: rgba(30, 41, 59, 0.5);
+}
+.cfg3-mini-badge.ok {
+  border-color: rgba(16, 185, 129, 0.6);
+  color: #86efac;
+  background: rgba(16, 185, 129, 0.12);
+}
+.cfg3-mini-badge.warn {
+  border-color: rgba(249, 115, 22, 0.6);
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.12);
+}
+.cfg3-mini-badge.bad {
+  border-color: rgba(239, 68, 68, 0.65);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.14);
+}
+.cfg3-mini-badge.neutral {
+  border-color: rgba(100, 116, 139, 0.6);
+  color: #94a3b8;
+  background: rgba(51, 65, 85, 0.35);
+}
+.cfg3-pill {
+  margin-top: 6px;
+  border: 1px solid rgba(71, 93, 132, 0.8);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(30, 64, 175, 0.18);
+  color: #bfdbfe;
+  font-size: 12px;
+  cursor: pointer;
+}
+@media (max-width: 1180px) {
+  .cfg3-shell { grid-template-columns: 1fr; }
+  .cfg3-left { max-height: 240px; }
+  .cfg3-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cfg3-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cfg3-topic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* ====== 筛选面板与自定义时间 ====== */
 .filter-panel { background: var(--bg-panel); border: 1px solid var(--border-color); padding: 10px 15px 5px 15px; position: relative; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); transition: all 0.3s ease; flex-shrink: 0; z-index: 20; }
