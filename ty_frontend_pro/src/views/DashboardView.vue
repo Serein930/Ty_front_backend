@@ -426,13 +426,22 @@
             <div class="cfg3-shell">
               <section class="cfg3-left panel board-panel">
                 <div class="cfg3-left-head">
-                  <div class="panel-line-title"><i class="fa-solid fa-layer-group"></i> 订阅规则</div>
+                  <div class="cfg3-left-title-wrap">
+                    <div class="panel-line-title"><i class="fa-solid fa-layer-group"></i> 订阅规则</div>
+                    <div class="cfg3-left-subtitle">共 {{ filteredSubscriptionRules.length }} 条规则，点击左侧卡片可切换编辑</div>
+                  </div>
                   <button class="chip-btn primary" @click="createSubscriptionRule"><i class="fa-solid fa-plus"></i> 新建</button>
                 </div>
                 <div class="sub-list-toolbar">
                   <input v-model="subscriptionState.search" class="sub-input sub-search" placeholder="搜索：名称 / 专题 / 负责人 / 分发对象">
                 </div>
-                <div class="sub-rule-list">
+                <div v-if="filteredSubscriptionRules.length === 0" class="sub-empty-state">
+                  <i class="fa-regular fa-folder-open"></i>
+                  <div class="sub-empty-title">暂无匹配规则</div>
+                  <div class="sub-empty-desc">尝试清空搜索条件，或新建一条订阅规则</div>
+                  <button class="chip-btn primary" @click="createSubscriptionRule"><i class="fa-solid fa-plus"></i> 新建规则</button>
+                </div>
+                <div v-else class="sub-rule-list">
                   <div
                     v-for="rule in filteredSubscriptionRules"
                     :key="rule.id"
@@ -489,11 +498,31 @@
                       状态：{{ selectedSubscriptionRule?.status === 'applied' ? '已发布' : '草稿' }}
                     </p>
                   </div>
-                  <select v-model="subscriptionEditor.enabled" class="cfg3-enable-select" :class="subscriptionEditor.enabled ? 'is-enabled' : 'is-disabled'">
-                    <option :value="true">启用</option>
-                    <option :value="false">停用</option>
-                  </select>
-                  <span class="cfg3-enable-tag" :class="subscriptionEditor.enabled ? 'enabled' : 'disabled'">{{ subscriptionEditor.enabled ? '启用中' : '已停用' }}</span>
+                  <div class="cfg3-headline-right">
+                    <select v-model="subscriptionEditor.enabled" class="cfg3-enable-select" :class="subscriptionEditor.enabled ? 'is-enabled' : 'is-disabled'">
+                      <option :value="true">启用</option>
+                      <option :value="false">停用</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="cfg3-quick-metrics">
+                  <div class="cfg3-quick-card">
+                    <span>当前步骤</span>
+                    <b>{{ subscriptionState.step }} / 4</b>
+                  </div>
+                  <div class="cfg3-quick-card">
+                    <span>已选专题</span>
+                    <b>{{ (subscriptionEditor.topics || []).length }}</b>
+                  </div>
+                  <div class="cfg3-quick-card">
+                    <span>预计推送</span>
+                    <b>{{ subscriptionSandbox.push }}</b>
+                  </div>
+                  <div class="cfg3-quick-card is-warn">
+                    <span>治理拦截</span>
+                    <b>{{ subscriptionSandbox.drop }}</b>
+                  </div>
                 </div>
 
                 <div class="cfg3-steps">
@@ -513,49 +542,68 @@
 
                 <div v-if="subscriptionState.step === 1" class="cfg3-step-pane">
                   <div class="cfg3-mode-switch">
-                    <button class="active"><i class="fa-solid fa-gem"></i> 业务向导模式</button>
-                    <button><i class="fa-solid fa-code-branch"></i> 专家 AST 模式</button>
+                    <button :class="{ active: subscriptionState.ruleMode === 'basic' }" @click="subscriptionState.ruleMode = 'basic'"><i class="fa-solid fa-gem"></i> 业务向导模式</button>
+                    <button :class="{ active: subscriptionState.ruleMode === 'ast' }" @click="subscriptionState.ruleMode = 'ast'"><i class="fa-solid fa-code-branch"></i> 专家 AST 模式</button>
                   </div>
 
-                  <div class="cfg3-section-title"><i class="fa-solid fa-bookmark"></i> 快速订阅情报大盘专题</div>
-                  <div class="cfg3-topic-grid">
-                    <button
-                      v-for="topic in SUBSCRIPTION_TOPICS"
-                      :key="topic.id"
-                      class="cfg3-topic"
-                      :class="{ active: subscriptionEditor.topics.includes(topic.id) }"
-                      @click="subscriptionEditor.topics = subscriptionEditor.topics.includes(topic.id) ? subscriptionEditor.topics.filter(t => t !== topic.id) : [...subscriptionEditor.topics, topic.id]">
-                      <i class="fa-solid" :class="topic.id === 'TopicDrugs' ? 'fa-capsules' : topic.id === 'TopicSmuggle' ? 'fa-person-walking-luggage' : topic.id === 'TopicTerror' ? 'fa-bomb' : topic.id === 'TopicDataLeak' ? 'fa-database' : topic.id === 'TopicTaiwan' ? 'fa-map-location-dot' : 'fa-bug'"></i>
-                      <span>{{ topic.name }}</span>
-                    </button>
-                  </div>
+                  <template v-if="subscriptionState.ruleMode === 'basic'">
+                    <div class="cfg3-section-title"><i class="fa-solid fa-bookmark"></i> 快速订阅情报大盘专题</div>
+                    <div class="cfg3-topic-grid">
+                      <button
+                        v-for="topic in SUBSCRIPTION_TOPICS"
+                        :key="topic.id"
+                        class="cfg3-topic"
+                        :class="{ active: subscriptionEditor.topics.includes(topic.id) }"
+                        @click="subscriptionEditor.topics = subscriptionEditor.topics.includes(topic.id) ? subscriptionEditor.topics.filter(t => t !== topic.id) : [...subscriptionEditor.topics, topic.id]">
+                        <i class="fa-solid" :class="topic.id === 'TopicDrugs' ? 'fa-capsules' : topic.id === 'TopicSmuggle' ? 'fa-person-walking-luggage' : topic.id === 'TopicTerror' ? 'fa-bomb' : topic.id === 'TopicDataLeak' ? 'fa-database' : topic.id === 'TopicTaiwan' ? 'fa-map-location-dot' : 'fa-bug'"></i>
+                        <span>{{ topic.name }}</span>
+                      </button>
+                    </div>
 
-                  <div class="cfg3-form-grid">
-                    <div class="cfg3-field">
-                      <label><i class="fa-solid fa-triangle-exclamation"></i> 最低接收危害等级</label>
-                      <select v-model="subscriptionEditor.minSeverity" class="sub-select">
-                        <option value="CRITICAL">CRITICAL</option>
-                        <option value="HIGH">HIGH</option>
-                        <option value="MEDIUM">MEDIUM</option>
-                        <option value="LOW">LOW</option>
-                      </select>
+                    <div class="cfg3-form-grid">
+                      <div class="cfg3-field">
+                        <label><i class="fa-solid fa-triangle-exclamation"></i> 最低接收危害等级</label>
+                        <select v-model="subscriptionEditor.minSeverity" class="sub-select">
+                          <option value="CRITICAL">CRITICAL</option>
+                          <option value="HIGH">HIGH</option>
+                          <option value="MEDIUM">MEDIUM</option>
+                          <option value="LOW">LOW</option>
+                        </select>
+                      </div>
+                      <div class="cfg3-field">
+                        <label><i class="fa-solid fa-chart-line"></i> 风险分数阈值</label>
+                        <input v-model.number="subscriptionEditor.riskMin" class="sub-input" type="number" min="0" max="100" placeholder="如: 70">
+                      </div>
                     </div>
-                    <div class="cfg3-field">
-                      <label><i class="fa-solid fa-chart-line"></i> 风险分数阈值</label>
-                      <input v-model.number="subscriptionEditor.riskMin" class="sub-input" type="number" min="0" max="100" placeholder="如: 70">
-                    </div>
-                  </div>
 
-                  <div class="cfg3-form-grid">
-                    <div class="cfg3-field">
-                      <label><i class="fa-solid fa-map-pin"></i> 地域关注</label>
-                      <input v-model="subscriptionEditor.regionFocus" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
+                    <div class="cfg3-form-grid">
+                      <div class="cfg3-field">
+                        <label><i class="fa-solid fa-map-pin"></i> 地域关注</label>
+                        <input v-model="subscriptionEditor.regionFocus" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
+                      </div>
+                      <div class="cfg3-field">
+                        <label><i class="fa-solid fa-tags"></i> 业务标签关注 (智能适配专题)</label>
+                        <input v-model="subscriptionEditor.bizTagFocus" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
+                      </div>
                     </div>
-                    <div class="cfg3-field">
-                      <label><i class="fa-solid fa-tags"></i> 业务标签关注 (智能适配专题)</label>
-                      <input v-model="subscriptionEditor.bizTagFocus" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
+                  </template>
+
+                  <template v-else>
+                    <div class="cfg3-note-box">专家 AST 模式：可直接输入规则表达式进行高级匹配。该表达式会与当前阈值共同用于沙箱模拟。</div>
+                    <div class="cfg3-ast-box">
+                      <div class="cfg3-field">
+                        <label><i class="fa-solid fa-code"></i> AST 条件表达式</label>
+                        <textarea
+                          v-model="subscriptionEditor.astExpression"
+                          class="sub-textarea cfg3-ast-textarea"
+                          placeholder="示例：(threat_category in [TopicDrugs,TopicSmuggle]) AND (risk_score >= 80) AND (source_platform == Telegram)"></textarea>
+                      </div>
+                      <div class="cfg3-ast-helper">
+                        <span class="cfg3-ast-chip">字段：threat_category / severity / risk_score / source_platform</span>
+                        <span class="cfg3-ast-chip">运算：== / != / in / contains / &gt;= / &lt;=</span>
+                      </div>
                     </div>
-                  </div>
+                  </template>
                 </div>
 
                 <div v-else-if="subscriptionState.step === 2" class="cfg3-step-pane">
@@ -866,6 +914,7 @@ const subscriptionRules = ref([
     id: 'sub-1',
     name: '涉毒高危订阅',
     owner: 'SystemAdmin',
+    ruleMode: 'basic',
     enabled: true,
     status: 'applied',
     topics: ['TopicDrugs'],
@@ -875,6 +924,7 @@ const subscriptionRules = ref([
     channels: ['Dashboard', 'Telegram'],
     schedule: '每 15 分钟',
     desc: '对涉毒高危线索进行实时订阅并转发值班组。',
+    astExpression: '',
     updatedAt: toDateTimeString(new Date())
   }
 ]);
@@ -883,6 +933,7 @@ const subscriptionState = reactive({
   selectedId: 'sub-1',
   search: '',
   step: 1,
+  ruleMode: 'basic',
   titleEditing: false,
   titleBackup: ''
 });
@@ -891,6 +942,7 @@ const subscriptionEditor = reactive({
   name: '',
   owner: '',
   enabled: true,
+  ruleMode: 'basic',
   status: 'draft',
   topics: [],
   minSeverity: 'HIGH',
@@ -912,6 +964,7 @@ const subscriptionEditor = reactive({
   telegramIds: '@ops_channel',
   priority: 50,
   note: '',
+  astExpression: '',
   rbacVisibility: '仅自己',
   editorIds: ''
 });
@@ -1545,6 +1598,8 @@ const syncSubscriptionEditor = () => {
   if (!rule) return;
   subscriptionEditor.name = rule.name || '';
   subscriptionEditor.owner = rule.owner || '';
+  subscriptionEditor.ruleMode = rule.ruleMode || 'basic';
+  subscriptionState.ruleMode = subscriptionEditor.ruleMode;
   subscriptionEditor.enabled = !!rule.enabled;
   subscriptionEditor.status = rule.status || 'draft';
   subscriptionEditor.topics = [...(rule.topics || [])];
@@ -1567,6 +1622,7 @@ const syncSubscriptionEditor = () => {
   subscriptionEditor.telegramIds = rule.telegramIds || '@ops_channel';
   subscriptionEditor.priority = Number(rule.priority ?? 50);
   subscriptionEditor.note = rule.note || '';
+  subscriptionEditor.astExpression = rule.astExpression || '';
   subscriptionEditor.rbacVisibility = rule.rbacVisibility || '仅自己';
   subscriptionEditor.editorIds = rule.editorIds || '';
 };
@@ -1576,6 +1632,7 @@ const persistSubscriptionEditor = () => {
   if (!rule) return null;
   rule.name = (subscriptionEditor.name || '').trim();
   rule.owner = (subscriptionEditor.owner || '').trim();
+  rule.ruleMode = subscriptionState.ruleMode || 'basic';
   rule.enabled = !!subscriptionEditor.enabled;
   rule.topics = [...(subscriptionEditor.topics || [])];
   rule.minSeverity = subscriptionEditor.minSeverity || 'HIGH';
@@ -1597,6 +1654,7 @@ const persistSubscriptionEditor = () => {
   rule.telegramIds = (subscriptionEditor.telegramIds || '').trim();
   rule.priority = Number(subscriptionEditor.priority || 50);
   rule.note = (subscriptionEditor.note || '').trim();
+  rule.astExpression = (subscriptionEditor.astExpression || '').trim();
   rule.rbacVisibility = subscriptionEditor.rbacVisibility || '仅自己';
   rule.editorIds = (subscriptionEditor.editorIds || '').trim();
   rule.updatedAt = toDateTimeString(new Date());
@@ -1606,7 +1664,8 @@ const persistSubscriptionEditor = () => {
 const validateSubscriptionEditor = () => {
   if (!(subscriptionEditor.name || '').trim()) return '规则名称不能为空';
   if (!(subscriptionEditor.owner || '').trim()) return '责任人不能为空';
-  if (!(subscriptionEditor.topics || []).length) return '至少选择一个监测专题';
+  if (subscriptionState.ruleMode === 'basic' && !(subscriptionEditor.topics || []).length) return '至少选择一个监测专题';
+  if (subscriptionState.ruleMode === 'ast' && !(subscriptionEditor.astExpression || '').trim()) return 'AST 模式下请填写表达式';
   if (!(subscriptionEditor.sources || []).length) return '至少选择一个监测来源';
   if (!(subscriptionEditor.channels || []).length) return '至少选择一个分发通道';
   return '';
@@ -1646,6 +1705,7 @@ const createSubscriptionRule = () => {
     id,
     name: '新建订阅规则',
     owner: '',
+    ruleMode: 'basic',
     enabled: true,
     status: 'draft',
     topics: [],
@@ -1668,6 +1728,7 @@ const createSubscriptionRule = () => {
     telegramIds: '@ops_channel',
     priority: 50,
     note: '',
+    astExpression: '',
     rbacVisibility: '仅自己',
     editorIds: '',
     updatedAt: toDateTimeString(new Date())
@@ -2008,15 +2069,28 @@ ensureSubscriptionSelection();
 .topic-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: #8ea5c4; font-size: 12px; }
 .topic-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
-.subscription-grid { min-height: 0; }
+.subscription-grid {
+  min-height: 0;
+  background:
+    radial-gradient(1200px 400px at 8% -10%, rgba(59, 130, 246, 0.12), transparent 60%),
+    radial-gradient(900px 320px at 88% 0%, rgba(16, 185, 129, 0.1), transparent 62%);
+  border-radius: 10px;
+}
 .cfg3-shell {
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: 260px minmax(560px, 1fr) 340px;
-  gap: 10px;
+  gap: 12px;
 }
 .cfg3-left, .cfg3-main, .cfg3-side { min-height: 0; }
+.cfg3-left,
+.cfg3-main,
+.cfg3-side {
+  border: 1px solid rgba(59, 91, 146, 0.5);
+  background: linear-gradient(180deg, rgba(10, 20, 40, 0.86), rgba(7, 14, 30, 0.88));
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08), 0 8px 24px rgba(2, 6, 23, 0.35);
+}
 .cfg3-left { display: flex; flex-direction: column; overflow: hidden; }
 .cfg3-main { display: flex; flex-direction: column; overflow-y: auto; }
 .cfg3-side { display: flex; flex-direction: column; overflow-y: auto; }
@@ -2024,14 +2098,28 @@ ensureSubscriptionSelection();
 .cfg3-left-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .cfg3-left .panel-line-title { margin-bottom: 0; border-bottom: 0; padding-bottom: 0; }
 .cfg3-left .sub-list-toolbar { margin-top: 8px; margin-bottom: 8px; }
+.cfg3-left-title-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cfg3-left-subtitle { color: #7e96ba; font-size: 12px; line-height: 1.4; }
+.cfg3-left-head .chip-btn {
+  white-space: nowrap;
+  min-width: 72px;
+  justify-content: center;
+  align-items: center;
+  display: inline-flex;
+}
 
 .cfg3-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  padding-bottom: 10px;
+  padding: 10px 0;
   border-bottom: 1px solid rgba(255,255,255,0.08);
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, rgba(9, 18, 36, 0.98), rgba(9, 18, 36, 0.9));
+  backdrop-filter: blur(4px);
+  z-index: 8;
 }
 .cfg3-toolbar-title { display: flex; align-items: center; gap: 8px; color: #dbeafe; font-weight: 700; font-size: 15px; }
 .cfg3-toolbar-title i { color: var(--accent-blue); }
@@ -2061,13 +2149,18 @@ ensureSubscriptionSelection();
   justify-content: space-between;
   gap: 10px;
   align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(77, 111, 170, 0.45);
+  border-radius: 10px;
+  background: linear-gradient(120deg, rgba(15, 31, 64, 0.85), rgba(10, 22, 46, 0.72));
 }
+.cfg3-headline-right { margin-left: auto; display: flex; align-items: center; }
 .cfg3-title-edit {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.cfg3-headline h3 { margin: 0; color: #f8fafc; font-size: 22px; line-height: 1.12; letter-spacing: .1px; }
+.cfg3-headline h3 { margin: 0; color: #f8fafc; font-size: 16px; line-height: 1.2; letter-spacing: .1px; }
 .cfg3-headline h3 { cursor: text; }
 .cfg3-title-input {
   height: 42px;
@@ -2076,7 +2169,7 @@ ensureSubscriptionSelection();
   border-radius: 8px;
   background: rgba(20, 31, 55, 0.8);
   color: #f8fafc;
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
   padding: 0 12px;
 }
@@ -2134,6 +2227,22 @@ ensureSubscriptionSelection();
   border-color: rgba(239, 68, 68, 0.75);
   background: rgba(239, 68, 68, 0.14);
 }
+
+.cfg3-quick-metrics {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.cfg3-quick-card {
+  border: 1px solid rgba(76, 109, 166, 0.45);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(14, 26, 52, 0.7);
+}
+.cfg3-quick-card span { color: #8ea5c4; font-size: 12px; }
+.cfg3-quick-card b { display: block; margin-top: 6px; color: #dbeafe; font-size: 20px; line-height: 1; }
+.cfg3-quick-card.is-warn b { color: #fdba74; }
 
 .cfg3-steps {
   margin-top: 10px;
@@ -2226,8 +2335,39 @@ ensureSubscriptionSelection();
   color: #8ea5c4;
   font-size: 12px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 .cfg3-mode-switch button.active { color: #fff; background: linear-gradient(90deg, rgba(236,72,153,.75), rgba(59,130,246,.7)); }
+
+.cfg3-ast-box {
+  border: 1px solid rgba(71, 93, 132, 0.5);
+  border-radius: 8px;
+  background: rgba(14, 22, 40, 0.65);
+  padding: 12px;
+}
+.cfg3-ast-textarea {
+  min-height: 120px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.cfg3-ast-helper {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cfg3-ast-chip {
+  border: 1px solid rgba(71, 93, 132, 0.6);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #9fb8da;
+  background: rgba(30, 41, 59, 0.5);
+}
 
 .cfg3-section-title { margin-top: 12px; margin-bottom: 8px; font-size: 13px; color: #93c5fd; display: flex; align-items: center; gap: 6px; }
 .cfg3-topic-grid {
@@ -2268,20 +2408,54 @@ ensureSubscriptionSelection();
 .sub-list-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
 .sub-search { width: 100%; }
 .sub-rule-list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.sub-empty-state {
+  flex: 1;
+  min-height: 220px;
+  border: 1px dashed rgba(96, 127, 179, 0.55);
+  border-radius: 10px;
+  background: rgba(13, 22, 41, 0.68);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  color: #8ea5c4;
+  text-align: center;
+  padding: 20px;
+}
+.sub-empty-state i { font-size: 24px; color: #60a5fa; }
+.sub-empty-title { color: #dbeafe; font-size: 15px; font-weight: 700; }
+.sub-empty-desc { font-size: 12px; line-height: 1.5; }
 .sub-rule-item {
   border: 1px solid rgba(71, 93, 132, 0.55);
   background: rgba(12, 20, 38, 0.75);
   border-radius: 8px;
-  padding: 10px;
+  padding: 11px;
   cursor: pointer;
   transition: .2s;
+  position: relative;
+  overflow: hidden;
 }
-.sub-rule-item:hover { border-color: var(--accent-blue); }
+.sub-rule-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background: transparent;
+}
+.sub-rule-item:hover {
+  border-color: var(--accent-blue);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.35);
+}
 .sub-rule-item.active {
   border-color: var(--accent-green);
   background: rgba(16, 185, 129, 0.12);
   box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.22);
 }
+.sub-rule-item.active::before { background: linear-gradient(180deg, #34d399, #10b981); }
 .sub-rule-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .sub-rule-title { color: #e2e8f0; font-size: 14px; font-weight: 700; }
 .sub-rule-meta { color: #8ea5c4; font-size: 12px; margin-top: 6px; line-height: 1.45; }
@@ -2293,10 +2467,10 @@ ensureSubscriptionSelection();
 
 .sub-input, .sub-select {
   width: 100%;
-  height: 34px;
-  border-radius: 6px;
+  height: 36px;
+  border-radius: 8px;
   border: 1px solid rgba(71, 93, 132, 0.6);
-  background: rgba(15, 23, 41, 0.75);
+  background: rgba(15, 23, 41, 0.82);
   color: #e2e8f0;
   padding: 0 10px;
 }
@@ -2516,6 +2690,7 @@ ensureSubscriptionSelection();
 @media (max-width: 1180px) {
   .cfg3-shell { grid-template-columns: 1fr; }
   .cfg3-left { max-height: 240px; }
+  .cfg3-quick-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cfg3-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cfg3-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cfg3-topic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2788,6 +2963,24 @@ ensureSubscriptionSelection();
 }
 
 @media (max-width: 1024px) {
+  .cfg3-headline {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .cfg3-headline h3 { font-size: 15px; }
+  .cfg3-title-input {
+    min-width: 0;
+    width: 100%;
+    font-size: 15px;
+  }
+  .cfg3-toolbar {
+    position: static;
+    padding-top: 0;
+    background: transparent;
+    backdrop-filter: none;
+  }
+  .cfg3-toolbar-actions { width: 100%; }
+  .cfg3-btn { flex: 1; justify-content: center; }
   .monitor-row { grid-template-columns: 1fr; }
   .monitor-side { min-width: 0; align-items: flex-start; }
   .topic-meta-grid { grid-template-columns: 1fr; }
