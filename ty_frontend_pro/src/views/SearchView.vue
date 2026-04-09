@@ -820,7 +820,7 @@ const generatedMockItems = Array.from({ length: 90 }, (_, idx) => {
   };
 });
 
-const mockItems = [...baseMockItems, ...generatedMockItems].map((item) => ({ ...item, avatar: '/offline/avatar-default.svg' }));
+// const mockItems = [...baseMockItems, ...generatedMockItems].map((item) => ({ ...item, avatar: '/offline/avatar-default.svg' }));
 
 const quickTimeOptions = [{ label: '全部', value: 'all' }, { label: '7天', value: '7d' }, { label: '1个月', value: '1m' }, { label: '半年', value: '6m' }, { label: '1年', value: '1y' }];
 const riskOptions = ['高危', '中危', '低危'];
@@ -838,7 +838,34 @@ const state = reactive({
 });
 
 const aiOutputRef = ref(null);
-const regionOptions = computed(() => Array.from(new Set(mockItems.map((x) => x.region))));
+const loading = ref(false);
+const error = ref(null);
+const apiData = ref([]);
+
+const fetchSearchResults = async (keyword = '') => {
+  loading.value = true;
+  error.value = null;
+  try {
+    const params = new URLSearchParams();
+    params.append('limit', '20');
+    if (keyword) params.append('keyword', keyword);
+    const response = await fetch(`/api/v1/intel/list?${params.toString()}`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const result = await response.json();
+    if (result.code === 200 && Array.isArray(result.data)) {
+      apiData.value = result.data.map((item) => ({ ...item, avatar: '/offline/avatar-default.svg' }));
+    } else {
+      apiData.value = [];
+    }
+  } catch (e) {
+    error.value = e.message;
+    apiData.value = [];
+  } finally {
+    loading.value = false;
+  }
+};
+
+const regionOptions = computed(() => Array.from(new Set(apiData.value.map((x) => x.region))));
 const quickTimeLabel = computed(() => quickTimeOptions.find((x) => x.value === state.quickTime)?.label || '全部');
 const basketIdSet = computed(() => new Set(state.basketIds));
 
@@ -862,7 +889,8 @@ const getRuleNameByItem = (item) => {
   return '跨平台异常关联';
 };
 
-const finalFiltered = computed(() => mockItems.filter((item) => {
+// const finalFiltered = computed(() => mockItems.filter((item) => {
+const finalFiltered = computed(() => apiData.value.filter((item) => {
   const passType = state.currentView === 'all' ? true : item.viewType === state.currentView;
   const passRisk = state.riskSet.length ? state.riskSet.includes(item.risk) : true;
   const passMedia = state.mediaSet.length ? state.mediaSet.includes(item.media) : true;
@@ -898,7 +926,8 @@ const aiReferenceGroups = computed(() => {
     .filter((group) => group.items.length > 0);
 });
 
-const basketItems = computed(() => mockItems.filter((x) => basketIdSet.value.has(x.id)));
+// const basketItems = computed(() => mockItems.filter((x) => basketIdSet.value.has(x.id)));
+const basketItems = computed(() => apiData.value.filter((x) => basketIdSet.value.has(x.id)));
 
 const analysisWindowPass = (item) => {
   if (state.analysisTime === 'all') return true;
@@ -1126,11 +1155,12 @@ const applyRuleFilterFromRank = (ruleName) => {
   state.selectedRule = state.selectedRule === ruleName ? 'all' : ruleName;
 };
 
-const submitSearch = (mode) => {
+const submitSearch = async (mode) => {
   state.submittedKeyword = state.inputKeyword.trim();
   state.mode = mode === 'ai' ? 'ai' : 'normal';
   state.hasSubmitted = true;
   if (!visibleGroupTabs.value.some((x) => x.type === state.groupTab)) state.groupTab = 'all';
+  await fetchSearchResults(state.submittedKeyword);
   if (state.mode === 'ai') {
     state.aiLeftCollapsed = false;
     state.aiRightCollapsed = false;
