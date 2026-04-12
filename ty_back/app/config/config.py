@@ -1,23 +1,56 @@
-# # app/config/config.py
-#
-# class ClickHouseSettings:
-#     HOST: str = "172.23.216.106"
-#     PORT: int = 9000  # 注意：clickhouse-driver 使用的是 TCP 端口，默认 9000
-#     USER: str = "default"
-#     PASSWORD: str = "clickhouse"
-#     DATABASE: str = "hawkeye"
-#
-# ch_settings = ClickHouseSettings()
+import os
+from pathlib import Path
 
 
-# app/config/config.py
+ENV_FILE = Path(__file__).resolve().parent / ".env"
+
+
+def _load_env_file() -> None:
+    """Load environment variables from app/config/.env."""
+    if not ENV_FILE.exists():
+        return
+
+    try:
+        from dotenv import load_dotenv  # type: ignore
+
+        load_dotenv(dotenv_path=ENV_FILE, override=False)
+        return
+    except Exception:
+        pass
+
+    # Fallback parser when python-dotenv is unavailable.
+    for raw_line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_env_file()
+
 
 class ClickHouseSettings:
-    HOST: str = "172.23.216.106"
-    PORT: int = 8123  # 满足你，使用 HTTP 端口 8123
-    USER: str = "default"
-    PASSWORD: str = "clickhouse"
-    DATABASE: str = "hawkeye"
+    def __init__(self) -> None:
+        self.HOST: str = os.getenv("CLICKHOUSE_HOST", "172.23.216.106")
+        self.PORT: int = int(os.getenv("CLICKHOUSE_PORT", "8123"))
+        self.USER: str = os.getenv("CLICKHOUSE_USER", "default")
+        self.PASSWORD: str = os.getenv("CLICKHOUSE_PASSWORD", "clickhouse")
+        self.DATABASE: str = os.getenv("CLICKHOUSE_DATABASE", "hawkeye")
+
+
+class LLMSettings:
+    def __init__(self) -> None:
+        self.API_BASE: str = os.getenv("LLM_API_BASE", "http://172.23.216.104:6006/v1")
+        self.API_KEY: str = os.getenv("LLM_API_KEY", "EMPTY")
+        self.MODEL_NAME: str = os.getenv("LLM_MODEL_NAME", "Qwen3-14B")
+
 
 ch_settings = ClickHouseSettings()
+llm_settings = LLMSettings()
 

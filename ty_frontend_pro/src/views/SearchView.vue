@@ -840,6 +840,8 @@ const state = reactive({
 const aiOutputRef = ref(null);
 const loading = ref(false);
 const error = ref(null);
+const aiLoading = ref(false);
+const aiError = ref('');
 const apiData = ref([]);
 
 const fetchSearchResults = async (keyword = '') => {
@@ -1165,7 +1167,7 @@ const submitSearch = async (mode) => {
     state.aiLeftCollapsed = false;
     state.aiRightCollapsed = false;
     state.aiFullscreenTarget = null;
-    makeAiReport();
+    await makeAiReport();
   }
 };
 
@@ -1184,10 +1186,10 @@ const toggleBasket = (item) => {
 const removeFromBasket = (id) => { state.basketIds = state.basketIds.filter((x) => x !== id); };
 const clearBasket = () => { state.basketIds = []; };
 
-const analyzeBasket = () => {
+const analyzeBasket = async () => {
   if (!basketItems.value.length) { window.alert('线索篮为空，请先勾选至少一条证据。'); return; }
   state.mode = 'ai';
-  makeAiReport(true);
+  await makeAiReport(true);
 };
 
 const drillDown = (keyword) => { state.inputKeyword = keyword; submitSearch('normal'); };
@@ -1209,13 +1211,20 @@ const closeDetail = () => { state.detailOpen = false; setTimeout(() => { state.d
 const showToast = (msg) => { window.alert(msg); };
 
 let typingTimer = null;
+const escapeHtml = (text = '') => text
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 const typeWrite = (text) => {
   if (typingTimer) clearTimeout(typingTimer);
   state.aiOutputHtml = '<span class="cursor"></span>';
   let i = 0;
   const step = () => {
     if (i >= text.length) { state.aiOutputHtml = state.aiOutputHtml.replace('<span class="cursor"></span>', ''); return; }
-    const char = text[i] === '\n' ? '<br>' : text[i];
+    const char = text[i] === '\n' ? '<br>' : escapeHtml(text[i]);
     state.aiOutputHtml = `${state.aiOutputHtml.replace('<span class="cursor"></span>', '')}${char}<span class="cursor"></span>`;
     i += 1;
     nextTick(() => { if (aiOutputRef.value) aiOutputRef.value.scrollTop = aiOutputRef.value.scrollHeight; });
@@ -1224,21 +1233,61 @@ const typeWrite = (text) => {
   step();
 };
 
-const makeAiReport = (fromBasket = false) => {
-  const src = fromBasket ? basketItems.value : finalFiltered.value;
-  const typeStat = { intel: 0, person: 0, account: 0 };
-  src.forEach((item) => { typeStat[item.viewType] += 1; });
-  const lines = [
-    `基准时间：${BASE_DATE.toISOString().slice(0, 10)}（day-window）`,
-    `当前筛选命中：${src.length} 条`,
-    `结构分布：intel ${typeStat.intel} / person ${typeStat.person} / account ${typeStat.account}`,
-    '',
-    '研判摘要：',
-    '- 命中目标存在跨平台扩散迹象，建议优先关注高危账号与资金介质。',
-    '- 已识别出可下钻实体（账号、地址、暗语）并可用于图谱扩线。',
-    '- 建议结合地区排行与规则 Top5 开展后续重点监测。'
-  ];
-  typeWrite(lines.join('\n'));
+const fetchAiSummary = async (fromBasket = false) => {
+  const payload = {
+    keyword: state.submittedKeyword || state.inputKeyword.trim(),
+    doc_type: state.currentView === 'all' ? 'All' : state.currentView,
+    max_items: fromBasket ? 12 : 8,
+    filters: {
+      quickTime: state.quickTime,
+      region: state.region,
+      riskSet: state.riskSet,
+      mediaSet: state.mediaSet,
+      topicSet: state.topicSet,
+      selectedRule: state.selectedRule,
+      basketCount: basketItems.value.length,
+      basketPreview: fromBasket ? basketItems.value.slice(0, 5).map((x) => ({ id: x.id, title: x.title, viewType: x.viewType, risk: x.risk })) : []
+    }
+  };
+
+  const response = await fetch('/api/search/ai-summary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw new Error(`AI summary HTTP error: ${response.status}`);
+  return response.json();
+};
+
+const makeAiReport = async (fromBasket = false) => {
+  aiLoading.value = true;
+  aiError.value = '';
+  typeWrite('AI 正在分析中，请稍候...');
+  try {
+    const data = await fetchAiSummary(fromBasket);
+    const refs = Array.isArray(data.references) ? data.references : [];
+    const refLines = refs.slice(0, 5).map((r, idx) => `${idx + 1}. [${r.doc_type || '-'} / ${r.severity || '-'}] ${r.title || '-'} (${r.doc_id || '-'})`);
+    const lines = [
+      `模型：${data.model || 'unknown'}${data.mock_used ? '（演示兜底）' : ''}`,
+      `耗时：${data.elapsed_ms || 0}ms`,
+      '',
+      data.summary || '未返回分析内容',
+      '',
+      `参考源：${refs.length} 条`,
+      ...(refLines.length ? refLines : ['- 无'])
+    ];
+    typeWrite(lines.join('\n'));
+  } catch (e) {
+    aiError.value = e.message || 'AI分析失败';
+    typeWrite([
+      'AI分析请求失败。',
+      `错误：${aiError.value}`,
+      '',
+      '请检查后端服务与 /api/search/ai-summary 路由是否可用。'
+    ].join('\n'));
+  } finally {
+    aiLoading.value = false;
+  }
 };
 
 const sendFollowUp = () => {

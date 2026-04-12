@@ -7,7 +7,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api/v1/intel/list': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8888',
+        changeOrigin: true
+      },
+      '/api/search': {
+        target: 'http://localhost:8888',
         changeOrigin: true
       }
     }

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-from app.routers import debug
-from app.routers import debug, intel # 导入新路由
+
+from app.routers import intel, search
 
 app = FastAPI()
 
@@ -16,9 +16,8 @@ app = FastAPI()
 #     print(type(name))
 #     return {"message": f"Hello {name}"}
 
-# 注册路由
-# app.include_router(debug.router, prefix="/api/v1")
 app.include_router(intel.router, prefix="/api/v1", tags=["情报数据"])
+app.include_router(search.router, tags=["全局检索"])
 
 @app.get("/")
 async def root():
