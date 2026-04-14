@@ -5,6 +5,9 @@
     </div>
     
     <nav class="nav-menu">
+      <router-link to="/home" class="nav-item" active-class="active">
+        <i class="fa-regular fa-chart-bar"></i> 态势感知
+      </router-link>
       <router-link to="/search" class="nav-item" active-class="active">
         <i class="fa-solid fa-magnifying-glass"></i> 情报检索
       </router-link>

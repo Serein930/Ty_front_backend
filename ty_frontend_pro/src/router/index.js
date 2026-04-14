@@ -1,13 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { isAuthenticated } from '../auth'
 import LoginView from '../views/LoginView.vue'
+import HomeView from '../views/home.vue'
 import DashboardView from '../views/DashboardView.vue'
 import SearchView from '../views/SearchView.vue'
 import TopologyView from '../views/TopologyView.vue'
 
 const routes = [
-  { path: '/', redirect: () => (isAuthenticated() ? '/search' : '/login') },
+  { path: '/', redirect: () => (isAuthenticated() ? '/home' : '/login') },
   { path: '/login', component: LoginView, meta: { guestOnly: true } },
+  { path: '/home', component: HomeView, meta: { requiresAuth: true } },
   
   // 具体的路由映射
   { path: '/dashboard', component: DashboardView, meta: { requiresAuth: true } },
@@ -30,7 +32,7 @@ router.beforeEach((to, from, next) => {
   }
 
   if (to.meta.guestOnly && authed) {
-    next('/search')
+    next('/home')
     return
   }
 

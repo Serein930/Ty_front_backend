@@ -108,13 +108,13 @@ const handleLogin = async () => {
     return;
   }
 
-  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/search';
+  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/home';
   router.replace(redirect);
 };
 
 onMounted(() => {
   if (isAuthenticated()) {
-    router.replace('/search');
+    router.replace('/home');
   }
 });
 </script>
