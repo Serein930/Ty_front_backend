@@ -46,6 +46,27 @@ async def execute_ch_query(query: str):
 
 # ... 原有代码保持不变 ...
 
+async def get_case_content_by_ids(content_ids: list) -> dict:
+    """
+    根据 content_id 列表从 hawkeye_ads_case_content_latest_test 查询 title 和 text_preview
+    返回 {content_id: {"title": ..., "text_preview": ...}}
+    """
+    if not content_ids:
+        return {}
+
+    ids_str = "','".join(content_ids)
+    query = f"""
+    SELECT content_id, title, text_preview
+    FROM hawkeye.hawkeye_ads_case_content_latest_test
+    WHERE content_id IN ('{ids_str}')
+    """
+
+    result = await execute_ch_query(query)
+    data = result.get("data", [])
+
+    return {item["content_id"]: {"title": item.get("title", ""), "text_preview": item.get("text_preview", "")} for item in data}
+
+
 async def get_intel_list(limit: int = 10):
     """
     从 hawkeye_ads_search_unified_latest 查询数据

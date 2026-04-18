@@ -51,6 +51,16 @@ class LLMSettings:
         self.MODEL_NAME: str = os.getenv("LLM_MODEL_NAME", "Qwen3-14B")
 
 
+class MilvusSettings:
+    def __init__(self) -> None:
+        self.HOST: str = os.getenv("MILVUS_HOST", "172.23.216.104")
+        self.PORT: str = os.getenv("MILVUS_PORT", "19530")
+        self.COLLECTION_NAME: str = os.getenv("MILVUS_COLLECTION_NAME", "ty_content")
+        self.EMBEDDING_API_URL: str = os.getenv("EMBEDDING_API_URL", "http://172.23.216.104:5005/v1/embeddings")
+        self.DIMENSION: int = int(os.getenv("EMBEDDING_DIMENSION", "4096"))
+
+
 ch_settings = ClickHouseSettings()
 llm_settings = LLMSettings()
+milvus_settings = MilvusSettings()
 

@@ -39,7 +39,7 @@ async def get_intel_list(
     FROM hawkeye.hawkeye_ads_search_unified_latest AS A
     LEFT JOIN (
         SELECT content_id, entity_tags, source_handle 
-        FROM hawkeye.hawkeye_ads_case_content_latest
+        FROM hawkeye.hawkeye_ads_case_content_latest_test
     ) AS B ON A.doc_id = B.content_id
     {where_str}
     ORDER BY A.event_time DESC

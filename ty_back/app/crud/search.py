@@ -27,7 +27,7 @@ def _execute_ch_sql(query: str) -> Dict[str, Any]:
 
 def get_search_counts(keyword: str) -> List[Dict[str, Any]]:
     """获取各个 Tab 的统计数量"""
-    kw = _escape_like(keyword)
+    kw = _escape_like(keyword.lower())
 
     query = f"""
         SELECT 
@@ -35,8 +35,8 @@ def get_search_counts(keyword: str) -> List[Dict[str, Any]]:
             count(1) AS total_count
         FROM hawkeye.hawkeye_ads_search_unified_latest
         WHERE 
-            event_date >= addYears(today(), -1) 
-            AND normalized_text LIKE '%{kw}%'
+            doc_id != '' 
+            AND search_title_text LIKE '%{kw}%'
         GROUP BY doc_type
     """
 
@@ -51,24 +51,37 @@ def get_search_counts(keyword: str) -> List[Dict[str, Any]]:
 
 def get_search_results(keyword: str, doc_type: str = "All", limit: int = 20, offset: int = 0) -> List[Dict[str, Any]]:
     """获取分页详情列表"""
-    kw = _escape_like(keyword)
+    kw = _escape_like(keyword.lower())
+
+    where_clauses = ["A.doc_id != ''", f"A.search_title_text LIKE '%{kw}%'"]
+    if doc_type and doc_type != "All":
+        where_clauses.append(f"A.doc_type = '{_escape_like(doc_type)}'")
+
+    where_str = " WHERE " + " AND ".join(where_clauses)
 
     query = f"""
         SELECT 
-            doc_type, doc_id, toString(event_date) AS event_date, platform,
-            title, text_preview, category_label, threat_category, 
-            severity, primary_handle
-        FROM hawkeye.hawkeye_ads_search_unified_latest
-        WHERE 
-            event_date >= addYears(today(), -1)
-            AND normalized_text LIKE '%{kw}%'
+            A.doc_id AS id,
+            A.doc_type AS viewType,
+            A.title AS title,
+            A.text_preview AS summary,
+            A.severity AS risk,
+            A.platform AS media,
+            A.region_province AS region,
+            A.topic AS topic,
+            toString(A.event_date) AS date,
+            dateDiff('day', A.event_date, today()) AS dayDiff,
+            arrayDistinct(arrayConcat(ifNull(B.entity_tags, []), [A.topic, A.platform])) AS entities,
+            arrayFilter(x -> x != '', [A.primary_handle, ifNull(B.source_handle, '')]) AS relatedAccounts
+        FROM hawkeye.hawkeye_ads_search_unified_latest AS A
+        LEFT JOIN (
+            SELECT content_id, entity_tags, source_handle 
+            FROM hawkeye.hawkeye_ads_case_content_latest_test
+        ) AS B ON A.doc_id = B.content_id
+        {where_str}
+        ORDER BY A.event_time DESC
+        LIMIT {int(limit)} OFFSET {int(offset)}
     """
-
-    # 如果前端没有选“全部”，而是选了特定的 Tab
-    if doc_type and doc_type != "All":
-        query += f" AND doc_type = '{_escape_like(doc_type)}'"
-
-    query += f" ORDER BY event_time DESC LIMIT {int(limit)} OFFSET {int(offset)}"
 
     result = _execute_ch_sql(query)
     items = result.get("data", [])

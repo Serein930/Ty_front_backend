@@ -7,16 +7,18 @@ class SearchTabCount(BaseModel):
     total_count: int
 
 class SearchResultItem(BaseModel):
-    doc_type: str
-    doc_id: str
-    event_date: str
-    platform: str
+    id: str
+    viewType: str
     title: str
-    text_preview: str
-    category_label: str
-    threat_category: str
-    severity: str
-    primary_handle: str
+    summary: str
+    risk: str
+    media: str
+    region: str
+    topic: str
+    date: str
+    dayDiff: int
+    entities: List[str] = []
+    relatedAccounts: List[str] = []
 
 class SearchResponse(BaseModel):
     tabs: List[SearchTabCount]
