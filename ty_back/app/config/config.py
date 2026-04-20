@@ -41,7 +41,7 @@ class ClickHouseSettings:
         self.PORT: int = int(os.getenv("CLICKHOUSE_PORT", "8123"))
         self.USER: str = os.getenv("CLICKHOUSE_USER", "default")
         self.PASSWORD: str = os.getenv("CLICKHOUSE_PASSWORD", "clickhouse")
-        self.DATABASE: str = os.getenv("CLICKHOUSE_DATABASE", "hawkeye")
+        self.DATABASE: str = os.getenv("CLICKHOUSE_DATABASE", "hawkeye_test")
 
 
 class LLMSettings:

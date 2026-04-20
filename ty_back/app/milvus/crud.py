@@ -27,8 +27,8 @@ async def get_intel_content_list(
         c.risk_score,
         c.region,
         c.url
-    FROM hawkeye.hawkeye_dwd_intel_content_test c
-    LEFT JOIN hawkeye.hawkeye_dwd_intel_content_cold_test cc
+    FROM hawkeye.hawkeye_dwd_intel_content c
+    LEFT JOIN hawkeye.hawkeye_dwd_intel_content_cold cc
         ON c.content_id = cc.content_id
     {where_clause}
     """
@@ -45,7 +45,7 @@ async def get_intel_content_count(content_id: Optional[str] = None) -> int:
 
     sql = f"""
     SELECT count() as cnt
-    FROM hawkeye.hawkeye_dwd_intel_content_test
+    FROM hawkeye.hawkeye_dwd_intel_content
     {where_clause}
     """
 

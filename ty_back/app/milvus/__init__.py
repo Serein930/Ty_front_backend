@@ -8,9 +8,6 @@ from app.milvus.service import (
     delete_all_data,
     query_content,
     search_vectors,
-    create_topic_collection,
-    check_topic_match,
-    sync_topic_data,
 )
 
 __all__ = [
@@ -23,7 +20,4 @@ __all__ = [
     "delete_all_data",
     "query_content",
     "search_vectors",
-    "create_topic_collection",
-    "check_topic_match",
-    "sync_topic_data",
 ]

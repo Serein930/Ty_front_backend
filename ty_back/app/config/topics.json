@@ -62,5 +62,69 @@
     "deleted_at": null,
     "final_syn_time": "2026-04-17T08:12:01.359422",
     "updated_at": "2026-04-17T07:31:19.627323"
+  },
+  "1776649476249": {
+    "name": "毒品专题",
+    "enabled": 1,
+    "status": "active",
+    "mode": "basic",
+    "basic_config": {
+      "threat_category": [
+        "TopicDrugs"
+      ],
+      "risk_level": "MEDIUM",
+      "risk_score": 60,
+      "region": [
+        ""
+      ],
+      "industry": [
+        ""
+      ]
+    },
+    "ast_config": {
+      "ast_rules": {
+        "additionalProp1": {}
+      }
+    },
+    "governance": {
+      "dedupe_key": "不过滤",
+      "dedupe_window": 30,
+      "frequency_hour": 50,
+      "excess": "静默丢弃"
+    },
+    "delivery": {
+      "user_ids": [
+        ""
+      ],
+      "group_ids": [
+        ""
+      ],
+      "dashboard_enabled": 1,
+      "webhook_urls": [
+        ""
+      ],
+      "telegram_ids": [
+        ""
+      ]
+    },
+    "meta": {
+      "charge_person": "tangtang123",
+      "priority": 50,
+      "summary": "888",
+      "visible_scope": "仅自己",
+      "editor_ids": [
+        "string"
+      ]
+    },
+    "cursor": {
+      "last_time": 0,
+      "last_id": ""
+    },
+    "created_at": "2026-04-17T02:34:28.799000+00:00",
+    "last_saved_draft_at": "2026-04-19T21:44:36.249183",
+    "applied_at": "2026-04-19T21:44:36.249183",
+    "deleted_at": null,
+    "final_syn_time": null,
+    "updated_at": "2026-04-19T21:44:36.249183"
   }
 }

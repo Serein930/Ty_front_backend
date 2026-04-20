@@ -48,7 +48,7 @@ async def execute_ch_query(query: str):
 
 async def get_case_content_by_ids(content_ids: list) -> dict:
     """
-    根据 content_id 列表从 hawkeye_ads_case_content_latest_test 查询 title 和 text_preview
+    根据 content_id 列表从 hawkeye_ads_case_content_latest 查询 title 和 text_preview
     返回 {content_id: {"title": ..., "text_preview": ...}}
     """
     if not content_ids:
@@ -57,7 +57,7 @@ async def get_case_content_by_ids(content_ids: list) -> dict:
     ids_str = "','".join(content_ids)
     query = f"""
     SELECT content_id, title, text_preview
-    FROM hawkeye.hawkeye_ads_case_content_latest_test
+    FROM hawkeye.hawkeye_ads_case_content_latest
     WHERE content_id IN ('{ids_str}')
     """
 

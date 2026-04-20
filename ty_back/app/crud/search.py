@@ -76,7 +76,7 @@ def get_search_results(keyword: str, doc_type: str = "All", limit: int = 20, off
         FROM hawkeye.hawkeye_ads_search_unified_latest AS A
         LEFT JOIN (
             SELECT content_id, entity_tags, source_handle 
-            FROM hawkeye.hawkeye_ads_case_content_latest_test
+            FROM hawkeye.hawkeye_ads_case_content_latest
         ) AS B ON A.doc_id = B.content_id
         {where_str}
         ORDER BY A.event_time DESC
