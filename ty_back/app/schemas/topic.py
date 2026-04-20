@@ -8,7 +8,7 @@ class BasicConfig(BaseModel):
     risk_level: Optional[str] = None
     risk_score: Optional[int] = None
     region: List[str] = Field(default_factory=list)
-    industry: List[str] = Field(default_factory=list)
+    entity_tags: List[str] = Field(default_factory=list)
 
 
 class ASTConfig(BaseModel):
