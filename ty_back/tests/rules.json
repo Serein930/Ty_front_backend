@@ -1,0 +1,60 @@
+{
+  "schema_version": "router_gw_v14.0",
+  "adapter_version": "1.2",
+  "rules": [
+    {
+      "id": "rule_drugs_ast_01",
+      "name": "高危涉毒 Telegram AST 规则",
+      "enabled": true,
+      "status": "applied",
+      "mode": "ast",
+      "meta": {
+        "owner": "SystemAdmin",
+        "priority": 80,
+        "desc": "命中后打上涉毒专题标签"
+      },
+      "ast": {
+        "type": "GROUP",
+        "op": "AND",
+        "children": [
+          {
+            "type": "COND",
+            "field": "threat_category",
+            "op": "eq",
+            "value": "TopicDrugs"
+          },
+          {
+            "type": "GROUP",
+            "op": "OR",
+            "children": [
+              {
+                "type": "COND",
+                "field": "severity",
+                "op": "in_list",
+                "value": "HIGH,CRITICAL"
+              },
+              {
+                "type": "COND",
+                "field": "risk_score",
+                "op": "gte",
+                "value": "80"
+              }
+            ]
+          },
+          {
+            "type": "COND",
+            "field": "source_platform",
+            "op": "eq",
+            "value": "Telegram"
+          },
+          {
+            "type": "COND",
+            "field": "labels",
+            "op": "any_of",
+            "value": "贩毒,暗网担保"
+          }
+        ]
+      }
+    }
+  ]
+}

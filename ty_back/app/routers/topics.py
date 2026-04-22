@@ -8,7 +8,7 @@ from typing import Any, List
 from fastapi import APIRouter, HTTPException, Path as PathParam
 from pydantic import BaseModel
 
-from app.schemas.topic import SubscriptionTopicCreate, SubscriptionTopicResponse, SubscriptionTopicListItem
+from app.schemas.topic import SubscriptionTopicCreate, SubscriptionTopicResponse, SubscriptionTopicListItem, TopicIdNameItem
 from app.schemas.base import Result
 
 router = APIRouter(prefix="/api/topics", tags=["专题管理"])
@@ -92,6 +92,30 @@ def list_topics():
             charge_person=topic_data.get("meta", {}).get("charge_person"),
             summary=topic_data.get("meta", {}).get("summary"),
             final_syn_time=topic_data.get("final_syn_time"),
+        )
+        result.append(item)
+
+    return Result.success(data=result)
+
+
+@router.get("/names", response_model=Result[list[TopicIdNameItem]])
+def list_topic_names():
+    try:
+        with open(TOPICS_FILE, "r") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            content = f.read()
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            if not content.strip():
+                return Result.success(data=[])
+            topics = json.loads(content)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return Result.success(data=[])
+
+    result = []
+    for topic_id, topic_data in topics.items():
+        item = TopicIdNameItem(
+            id=int(topic_id),
+            name=topic_data.get("name"),
         )
         result.append(item)
 
@@ -182,3 +206,94 @@ def toggle_topic(topic_id: int = PathParam(..., description="专题ID")):
         "enabled": new_enabled,
         "message": f"专题已{action}"
     })
+
+
+from app.schemas.alert import AlertListItem, AlertDetailResponse, RuleNameStatItem
+from app.crud.alert import get_alert_list_all, toggle_alert_read_status, toggle_alert_false_positive, get_alert_detail, get_rule_name_stats, get_alert_list_by_threat_category, get_alert_list_by_topic_name
+
+
+@router.get("/alert/list_all", response_model=Result[List[AlertListItem]])
+def list_alert_all():
+    """
+    获取告警信息列表的全部数据
+    """
+    result = get_alert_list_all()
+    return Result.success(data=result["items"], msg=f"共 {result['total']} 条")
+
+
+@router.get("/alert/list", response_model=Result[List[AlertListItem]])
+def list_alert_by_threat_category(threat_category: str):
+    """
+    根据threat_category过滤告警数据
+    """
+    result = get_alert_list_by_threat_category(threat_category)
+    return Result.success(data=result["items"], msg=f"共 {result['total']} 条")
+
+
+@router.get("/alert/list_by_topic_name", response_model=Result[List[AlertListItem]])
+def list_alert_by_topic_name(name: str):
+    """
+    根据订阅名称(rule_name)获取告警列表
+    - name: 订阅名称，匹配hawkeye_ads_alert_event_latest表的threat_category字段
+    """
+    result = get_alert_list_by_topic_name(name)
+    return Result.success(data=result["items"], msg=f"共 {result['total']} 条")
+
+
+@router.get("/alert/rule_name_stats", response_model=Result[List[RuleNameStatItem]])
+def get_rule_name_statistics():
+    """
+    获取rule_name出现次数前5名统计
+    """
+    result = get_rule_name_stats()
+    return Result.success(data=result, msg=f"共 {len(result)} 条")
+
+
+@router.post("/alert/{event_id}/toggle_read", response_model=Result[dict])
+def toggle_alert_read(event_id: str):
+    """
+    切换告警已读/未读状态
+    - event_id: 告警事件ID
+    - 返回新的已读状态
+    """
+    result = toggle_alert_read_status(event_id)
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result["message"])
+    return Result.success(data={
+        "event_id": result["event_id"],
+        "read_status": result["read_status"]
+    }, msg="已读状态已更新")
+
+
+@router.post("/alert/{event_id}/toggle_false_positive", response_model=Result[dict])
+def toggle_fp(event_id: str):
+    """
+    切换告警误报状态
+    - event_id: 告警事件ID
+    - 返回新的误报状态
+    """
+    result = toggle_alert_false_positive(event_id)
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result["message"])
+    return Result.success(data={
+        "event_id": result["event_id"],
+        "false_positive": result["false_positive"]
+    }, msg="误报状态已更新")
+
+
+@router.get("/alert/{event_id}/detail", response_model=Result[AlertDetailResponse])
+def get_alert_detail_route(event_id: str, content_id: str):
+    """
+    获取告警详情
+    - event_id: 告警事件ID
+    - content_id: 内容ID（用于查询原文正文）
+    - 返回 title、author_name、raw_content
+    """
+    result = get_alert_detail(event_id, content_id)
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result["message"])
+    return Result.success(data=AlertDetailResponse(
+        title=result["title"],
+        author_name=result["author_name"],
+        raw_content=result["raw_content"]
+    ))

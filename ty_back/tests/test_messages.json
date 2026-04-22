@@ -1,0 +1,1 @@
+[{"threat_category": "TopicSmuggle", "severity": "HIGH", "risk_score": 85, "source_platform": "Telegram", "source_handle": "@smuggler_01", "labels": ["水客带货"], "ioc_location": ["东南亚", "广东"], "raw_content": "测试走私内容"}]

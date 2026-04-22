@@ -9,6 +9,7 @@ from app.milvus.service import (
     query_content,
     search_vectors,
 )
+from app.schemas.topic import check_topic_match
 
 __all__ = [
     "milvus_settings",
@@ -20,4 +21,5 @@ __all__ = [
     "delete_all_data",
     "query_content",
     "search_vectors",
+    "check_topic_match",
 ]

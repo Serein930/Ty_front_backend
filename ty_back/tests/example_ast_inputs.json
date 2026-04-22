@@ -1,0 +1,79 @@
+[
+  {
+    "name": "【应命中】缅北洗钱跑分 - 满足全部条件",
+    "threat_category": "TopicCybercrime",
+    "severity": "HIGH",
+    "risk_score": 90,
+    "source_platform": "Telegram",
+    "source_handle": "@money_launder_01",
+    "entity_tags": ["跑分", "洗钱"],
+    "ioc_location": ["缅北"],
+    "raw_content": "高价收购USDT，缅北跑分团队接单"
+  },
+  {
+    "name": "【应命中】毒品+缅北 - 满足全部条件",
+    "threat_category": "TopicDrugs",
+    "severity": "CRITICAL",
+    "risk_score": 95,
+    "source_platform": "暗网",
+    "source_handle": "@drug_dealer_01",
+    "entity_tags": ["贩毒"],
+    "ioc_location": ["缅北", "金三角"],
+    "raw_content": "缅北出货，高纯度海洛因"
+  },
+  {
+    "name": "【应命中】毒品+跑分 - 满足全部条件",
+    "threat_category": "TopicDrugs",
+    "severity": "HIGH",
+    "risk_score": 85,
+    "source_platform": "Telegram",
+    "source_handle": "@drug_money_01",
+    "entity_tags": ["贩毒", "跑分"],
+    "ioc_location": ["东南亚"],
+    "raw_content": "支持跑分付款，毒品交易"
+  },
+  {
+    "name": "【不应命中】TopicDrugs + 高分，但无跑分/缅北",
+    "threat_category": "TopicDrugs",
+    "severity": "HIGH",
+    "risk_score": 90,
+    "source_platform": "Telegram",
+    "source_handle": "@drug_01",
+    "entity_tags": ["贩毒"],
+    "ioc_location": ["东南亚"],
+    "raw_content": "毒品交易，无跑分无缅北"
+  },
+  {
+    "name": "【不应命中】TopicCybercrime + 低分",
+    "threat_category": "TopicCybercrime",
+    "severity": "MEDIUM",
+    "risk_score": 60,
+    "source_platform": "论坛",
+    "source_handle": "@hacker_01",
+    "entity_tags": ["跑分"],
+    "ioc_location": ["缅北"],
+    "raw_content": "跑分洗钱，但风险分不够"
+  },
+  {
+    "name": "【不应命中】TopicSmuggle（不在列表中）",
+    "threat_category": "TopicSmuggle",
+    "severity": "HIGH",
+    "risk_score": 90,
+    "source_platform": "Telegram",
+    "source_handle": "@smuggler_01",
+    "entity_tags": ["跑分"],
+    "ioc_location": ["缅北"],
+    "raw_content": "走私+跑分，但专题不对"
+  },
+  {
+    "name": "【不应命中】TopicCybercrime + 高分 + 缅北，但TopicCybercrime不在in_list（实际在，所以应命中）",
+    "threat_category": "TopicCybercrime",
+    "severity": "HIGH",
+    "risk_score": 85,
+    "source_platform": "Telegram",
+    "source_handle": "@cyber_01",
+    "entity_tags": [],
+    "ioc_location": ["缅北"],
+    "raw_content": "缅北网络黑产"
+  }
+]

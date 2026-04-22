@@ -6,17 +6,16 @@
     "mode": "basic",
     "basic_config": {
       "threat_category": [
-        "TopicSmuggle"
+        "TopicDrugs"
       ],
       "risk_level": "HIGH",
       "risk_score": 75,
       "region": [
-        "东南亚",
-        "广东"
+        "缅北"
       ],
       "entity_tags": [
-        "水客带货",
-        "飞艇走私"
+        "贩毒",
+        "暗网担保"
       ]
     },
     "ast_config": {
@@ -64,7 +63,7 @@
   "1776672067839": {
     "name": "缅北高危洗钱跑分监控",
     "enabled": 1,
-    "status": "draft",
+    "status": "applied",
     "mode": "ast",
     "basic_config": {
       "threat_category": [],
