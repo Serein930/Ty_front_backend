@@ -61,7 +61,7 @@ class MilvusSettings:
 
 class RerankSettings:
     def __init__(self) -> None:
-        self.MODEL_PATH: str = os.getenv("RERANK_MODEL_PATH", "bge-reranker-v2-m3")
+        self.MODEL_PATH: str = os.getenv("RERANK_MODEL_PATH", "/data/czr/Ty_front_backend/models/bge-reranker-v2-m3")
 
 
 
