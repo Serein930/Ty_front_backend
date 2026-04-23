@@ -5,7 +5,6 @@
     <div class="main-container">
       <aside class="sidebar" :class="{ 'collapsed': state.leftCollapsed }">
         <div class="sidebar-item" :class="{ active: state.activeModule === 'follow' }" @click="switchModule('follow')"><i class="fa-regular fa-heart"></i> <span>我的关注</span></div>
-        <div class="sidebar-item" :class="{ active: state.activeModule === 'monitor' }" @click="switchModule('monitor')"><i class="fa-solid fa-desktop"></i> <span>专题监测</span></div>
         <div class="sidebar-item" :class="{ active: state.activeModule === 'subscription' }" @click="switchModule('subscription')"><i class="fa-solid fa-route"></i> <span>订阅监测</span></div>
         <div class="sidebar-item" :class="{ active: state.activeModule === 'topicList' }" @click="switchModule('topicList')"><i class="fa-solid fa-list-ul"></i> <span>专题列表</span></div>
         <div class="sidebar-item" :class="{ active: state.activeModule === 'alerts' }" @click="switchModule('alerts')">
@@ -78,7 +77,6 @@
                 <div class="chip" :class="{ active: filters.media === 'all' }" @click="filters.media = 'all'">全部</div>
                 <div class="chip" :class="{ active: filters.media === 'Tor' }" @click="filters.media = 'Tor'">Tor</div>
                 <div class="chip" :class="{ active: filters.media === 'Telegram' }" @click="filters.media = 'Telegram'">Telegram</div>
-                <div class="chip" :class="{ active: filters.media === 'Weibo' }" @click="filters.media = 'Weibo'">微博</div>
                 <div class="chip" :class="{ active: filters.media === 'I2P' }" @click="filters.media = 'I2P'">I2P</div>
               </div>
 
@@ -171,6 +169,7 @@
                     </div>
                   </div>
                   <div class="item-actions">
+                    <button class="follow-btn" :class="{ active: item.followed }" @click.stop="toggleAlertFollow(item)"><i class="fa-regular" :class="item.followed ? 'fa-heart-circle-check' : 'fa-heart'"></i> {{ item.followed ? '已关注' : '关注' }}</button>
                     <button class="fp-btn" @click.stop="markFalsePositive(item)"><i class="fa-solid fa-ban"></i> 误报</button>
                     <button class="translate-btn" @click.stop="mockTranslate"><i class="fa-solid fa-language"></i> 翻译</button>
                     <button class="export-item-btn" @click.stop="exportSingle(item)"><i class="fa-solid fa-download"></i> 导出</button>
@@ -317,103 +316,45 @@
         </template>
 
         <template v-else-if="state.activeModule === 'follow'">
-          <div class="board-grid board-follow">
+          <div class="board-grid">
             <div class="summary-card">
               <div class="summary-item">
-                <div class="summary-label">关注对象</div>
+                <div class="summary-label">关注线索总数</div>
                 <div class="summary-value">{{ followSummary.total }}</div>
               </div>
               <div class="summary-item">
-                <div class="summary-label">高危对象</div>
+                <div class="summary-label">高危线索</div>
                 <div class="summary-value danger">{{ followSummary.high }}</div>
               </div>
               <div class="summary-item">
-                <div class="summary-label">24H 新增线索</div>
-                <div class="summary-value">{{ followSummary.alerts24h }}</div>
+                <div class="summary-label">中危线索</div>
+                <div class="summary-value">{{ followSummary.mid }}</div>
               </div>
               <div class="summary-item">
-                <div class="summary-label">已静默对象</div>
-                <div class="summary-value mute">{{ followSummary.muted }}</div>
+                <div class="summary-label">低危线索</div>
+                <div class="summary-value mute">{{ followSummary.low }}</div>
               </div>
             </div>
 
             <div class="panel board-panel">
               <div class="panel-line-title"><i class="fa-regular fa-heart"></i> 我的关注清单</div>
-              <div class="follow-list">
-                <div v-for="item in followList" :key="item.id" class="follow-card" :class="[{ muted: item.muted }, `risk-${item.risk}`]" @click="openFollowInAlerts(item)">
-                  <div class="follow-head">
-                    <div>
-                      <div class="follow-name">{{ item.name }}</div>
-                      <div class="follow-meta">{{ item.type }} · 最近活跃 {{ item.lastSeen }}</div>
-                    </div>
-                    <span class="risk-dot" :class="item.risk">{{ getRiskText(item.risk) }}</span>
+              <div v-if="followedAlerts.length === 0" style="padding: 24px; color: var(--text-dim);">暂无关注线索，请在告警信息列表点击“关注”按钮。</div>
+              <div v-else class="topic-list-grid">
+                <div v-for="item in followedAlerts" :key="item.id" class="topic-card" @click="openFollowedAlertInAlerts(item)">
+                  <div class="topic-head">
+                    <div class="topic-name">{{ getDisplayTitle(item) }}</div>
+                    <span class="status-badge" :class="item.risk === 'high' ? 'danger' : item.risk === 'mid' ? 'warn' : 'on'">{{ getRiskText(item.risk) }}</span>
                   </div>
-
-                  <div class="follow-tags">
-                    <span v-for="p in item.platforms" :key="`${item.id}-${p}`" class="mini-tag">{{ p }}</span>
+                  <div class="topic-desc">{{ item.content }}</div>
+                  <div class="topic-meta-grid">
+                    <span>作者：{{ item.author }}</span>
+                    <span>来源：{{ item.source }}</span>
+                    <span>专题：{{ getTopicName(item.topic) }}</span>
+                    <span>时间：{{ formatTime(item.date) }}</span>
                   </div>
-
-                  <div class="follow-progress-row">
-                    <span>关注热度</span>
-                    <div class="progress-bg"><div class="progress-bar" :style="{ width: `${item.heat}%` }"></div></div>
-                    <span>{{ item.heat }}%</span>
-                  </div>
-
-                  <div class="follow-foot">
-                    <span>24H 告警：<b>{{ item.alerts24h }}</b></span>
-                    <div class="follow-actions">
-                      <button class="chip-btn" @click.stop="toggleFollowMute(item)">{{ item.muted ? '取消静默' : '静默' }}</button>
-                      <button class="chip-btn primary" @click.stop="openFollowInAlerts(item)">查看告警</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="state.activeModule === 'monitor'">
-          <div class="board-grid">
-            <div class="summary-card">
-              <div class="summary-item">
-                <div class="summary-label">运行中专题</div>
-                <div class="summary-value">{{ monitorSummary.running }}</div>
-              </div>
-              <div class="summary-item">
-                <div class="summary-label">暂停专题</div>
-                <div class="summary-value mute">{{ monitorSummary.paused }}</div>
-              </div>
-              <div class="summary-item">
-                <div class="summary-label">24H 命中总量</div>
-                <div class="summary-value">{{ monitorSummary.hits24h }}</div>
-              </div>
-              <div class="summary-item">
-                <div class="summary-label">待复核任务</div>
-                <div class="summary-value danger">{{ monitorSummary.pending }}</div>
-              </div>
-            </div>
-
-            <div class="panel board-panel">
-              <div class="panel-line-title"><i class="fa-solid fa-desktop"></i> 专题监测任务</div>
-              <div class="monitor-table">
-                <div v-for="item in monitorTopics" :key="item.id" class="monitor-row" @click="openMonitorInAlerts(item)">
-                  <div class="monitor-main">
-                    <div class="monitor-title">{{ item.name }}</div>
-                    <div class="monitor-meta">来源：{{ item.sources.join(' / ') }} · 周期：{{ item.schedule }}</div>
-                    <div class="monitor-progress">
-                      <span>覆盖度</span>
-                      <div class="progress-bg"><div class="progress-bar warning" :style="{ width: `${item.coverage}%` }"></div></div>
-                      <span>{{ item.coverage }}%</span>
-                    </div>
-                  </div>
-                  <div class="monitor-side">
-                    <span class="status-badge" :class="item.status === '运行中' ? 'on' : 'off'">{{ item.status }}</span>
-                    <span class="monitor-hit">24H: {{ item.hits24h }}</span>
-                    <span class="monitor-pending">待复核: {{ item.pendingReview }}</span>
-                    <div class="monitor-actions">
-                      <button class="chip-btn" @click.stop="toggleMonitorStatus(item)">{{ item.status === '运行中' ? '暂停' : '启动' }}</button>
-                      <button class="chip-btn primary" @click.stop="runMonitorNow(item)">立即运行</button>
-                    </div>
+                  <div class="topic-actions">
+                    <button class="chip-btn" @click.stop="toggleAlertFollow(item)">取消关注</button>
+                    <button class="chip-btn primary" @click.stop="openDetail(item)">查看详情</button>
                   </div>
                 </div>
               </div>
@@ -542,8 +483,8 @@
 
                 <div v-if="subscriptionState.step === 1" class="cfg3-step-pane">
                   <div class="cfg3-mode-switch">
-                    <button :class="{ active: subscriptionState.ruleMode === 'basic' }" @click="subscriptionState.ruleMode = 'basic'"><i class="fa-solid fa-gem"></i> 业务向导模式</button>
-                    <button :class="{ active: subscriptionState.ruleMode === 'ast' }" @click="subscriptionState.ruleMode = 'ast'"><i class="fa-solid fa-code-branch"></i> 专家 AST 模式</button>
+                    <button :class="{ active: subscriptionState.ruleMode === 'basic' }" @click="requestRuleModeSwitch('basic')"><i class="fa-solid fa-gem"></i> 业务向导模式</button>
+                    <button :class="{ active: subscriptionState.ruleMode === 'ast' }" @click="requestRuleModeSwitch('ast')"><i class="fa-solid fa-code-branch"></i> 专家 AST 模式</button>
                   </div>
 
                   <template v-if="subscriptionState.ruleMode === 'basic'">
@@ -555,7 +496,7 @@
                         class="cfg3-topic"
                         :class="{ active: subscriptionEditor.topics.includes(topic.id) }"
                         @click="subscriptionEditor.topics = subscriptionEditor.topics.includes(topic.id) ? subscriptionEditor.topics.filter(t => t !== topic.id) : [...subscriptionEditor.topics, topic.id]">
-                        <i class="fa-solid" :class="topic.id === 'TopicDrugs' ? 'fa-capsules' : topic.id === 'TopicSmuggle' ? 'fa-person-walking-luggage' : topic.id === 'TopicTerror' ? 'fa-bomb' : topic.id === 'TopicDataLeak' ? 'fa-database' : topic.id === 'TopicTaiwan' ? 'fa-map-location-dot' : 'fa-bug'"></i>
+                        <i class="fa-solid" :class="topic.id === 'TopicDrugs' ? 'fa-capsules' : topic.id === 'TopicSmuggle' ? 'fa-person-walking-luggage' : topic.id === 'TopicTerror' ? 'fa-bomb' : topic.id === 'TopicDataLeak' ? 'fa-database' : topic.id === 'TopicCybercrime' ? 'fa-user-ninja' : 'fa-network-wired'"></i>
                         <span>{{ topic.name }}</span>
                       </button>
                     </div>
@@ -578,7 +519,10 @@
 
                     <div class="cfg3-form-grid">
                       <div class="cfg3-field">
-                        <label><i class="fa-solid fa-map-pin"></i> 地域关注</label>
+                        <label class="cfg3-label-with-action">
+                          <span><i class="fa-solid fa-map-pin"></i> 地域关注</span>
+                          <button class="cfg3-dict-trigger" @click="openRegionDictModal"><i class="fa-solid fa-list-check"></i> 字典</button>
+                        </label>
                         <input v-model="subscriptionEditor.regionFocus" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
                       </div>
                       <div class="cfg3-field">
@@ -589,18 +533,65 @@
                   </template>
 
                   <template v-else>
-                    <div class="cfg3-note-box">专家 AST 模式：可直接输入规则表达式进行高级匹配。该表达式会与当前阈值共同用于沙箱模拟。</div>
+                    <div class="cfg3-note-box">专家 AST 模式：使用可视化逻辑树配置规则。支持 AND 且 / OR 或 / NOT 非，支持添加条件与子组，并自动生成表达式用于沙箱模拟。</div>
                     <div class="cfg3-ast-box">
+                      <div class="cfg3-ast-helper" style="margin-top: 0; margin-bottom: 12px;">
+                        <span class="cfg3-ast-chip">逻辑运算：AND 且 / OR 或 / NOT 非</span>
+                        <span class="cfg3-ast-chip">能力：条件、子组、嵌套组合</span>
+                        <span class="cfg3-ast-chip">提示：NOT 非组代表“子条件均不满足”</span>
+                      </div>
+
+                      <div class="cfg3-ast-tree">
+                        <div
+                          v-for="row in astGroupRows"
+                          :key="row.group.id"
+                          class="cfg3-ast-group-row"
+                          :style="{ marginLeft: `${row.level * 20}px` }">
+                          <div class="cfg3-ast-group-head">
+                            <select v-model="row.group.op" class="sub-select cfg3-ast-op-select">
+                              <option value="AND">AND 且</option>
+                              <option value="OR">OR 或</option>
+                              <option value="NOT">NOT 非</option>
+                            </select>
+                            <div class="cfg3-ast-group-actions">
+                              <button class="cfg3-ast-mini-btn" @click="addAstCondition(row.group.id)"><i class="fa-solid fa-plus"></i> 条件</button>
+                              <button class="cfg3-ast-mini-btn" @click="addAstSubgroup(row.group.id)"><i class="fa-solid fa-folder-plus"></i> 子组</button>
+                              <button v-if="!row.isRoot" class="cfg3-ast-mini-btn danger" @click="removeAstGroup(row.group.id)"><i class="fa-solid fa-trash-can"></i> 删除组</button>
+                            </div>
+                          </div>
+
+                          <div class="cfg3-ast-condition-list">
+                            <div v-for="cond in row.group.conditions" :key="cond.id" class="cfg3-ast-condition-row">
+                              <select v-model="cond.field" class="sub-select cfg3-ast-field-select" @change="syncAstConditionOperator(cond)">
+                                <option v-for="field in AST_FIELD_OPTIONS" :key="field.value" :value="field.value">{{ field.label }}</option>
+                              </select>
+                              <select v-model="cond.operator" class="sub-select cfg3-ast-opr-select">
+                                <option v-for="op in getAstOperators(cond.field)" :key="op.value" :value="op.value">{{ op.label }}</option>
+                              </select>
+                              <input
+                                v-if="!isAstUnaryOperator(cond.operator)"
+                                v-model="cond.value"
+                                class="sub-input cfg3-ast-value-input"
+                                :placeholder="getAstValuePlaceholder(cond.field, cond.operator)">
+                              <div v-else class="cfg3-ast-unary-tip">无需输入值</div>
+                              <button class="cfg3-ast-mark" title="条件标记（展示）" @click.prevent><i class="fa-solid fa-list-check"></i></button>
+                              <button class="cfg3-ast-del" title="删除条件" @click="removeAstCondition(row.group.id, cond.id)"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                          </div>
+
+                          <div v-if="!row.group.conditions.length && !row.group.groups.length" class="cfg3-ast-empty-tip">
+                            当前逻辑组为空，请至少添加一个条件或子组。
+                          </div>
+                        </div>
+                      </div>
+
                       <div class="cfg3-field">
-                        <label><i class="fa-solid fa-code"></i> AST 条件表达式</label>
+                        <label><i class="fa-solid fa-code"></i> AST 条件表达式（自动生成）</label>
                         <textarea
                           v-model="subscriptionEditor.astExpression"
                           class="sub-textarea cfg3-ast-textarea"
-                          placeholder="示例：(threat_category in [TopicDrugs,TopicSmuggle]) AND (risk_score >= 80) AND (source_platform == Telegram)"></textarea>
-                      </div>
-                      <div class="cfg3-ast-helper">
-                        <span class="cfg3-ast-chip">字段：threat_category / severity / risk_score / source_platform</span>
-                        <span class="cfg3-ast-chip">运算：== / != / in / contains / &gt;= / &lt;=</span>
+                          readonly
+                          placeholder="表达式将基于可视化 AST 条件自动生成"></textarea>
                       </div>
                     </div>
                   </template>
@@ -829,6 +820,78 @@
       </div>
     </div>
 
+    <div class="modal-overlay" :class="{ open: subscriptionState.modeModalOpen }" @click.self="closeRuleModeSwitchModal">
+      <div class="modal-box cfg3-mode-modal" v-if="subscriptionState.modeModalOpen">
+        <div class="modal-header">
+          <div class="modal-title"><i class="fa-solid fa-shuffle"></i> 模式迁移预览</div>
+          <div class="modal-close" @click="closeRuleModeSwitchModal"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+        <div class="modal-body cfg3-mode-modal-body">
+          <div class="cfg3-mode-tip">将尝试把当前规则迁移为 {{ subscriptionState.pendingRuleMode === 'basic' ? '业务向导模式' : '专家 AST 模式' }}。迁移采用 JSON 请求/响应结构预览，确认后写入当前规则。</div>
+          <div class="cfg3-mode-preview-title">迁移预览</div>
+          <pre class="cfg3-json-preview cfg3-mode-json">{{ JSON.stringify(subscriptionState.modeSwitchPreview || {}, null, 2) }}</pre>
+          <div class="cfg3-mode-desc">当前模式内容会自动保留在规则中，可随时切回。</div>
+        </div>
+        <div class="modal-footer cfg3-mode-footer">
+          <div style="flex: 1;"></div>
+          <button class="modal-btn btn-tool" @click="closeRuleModeSwitchModal">取消</button>
+          <button class="modal-btn btn-primary" @click="applyRuleModeSwitch">确认切换</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" :class="{ open: regionDictState.open }" @click.self="closeRegionDictModal">
+      <div class="modal-box cfg3-dict-modal" v-if="regionDictState.open">
+        <div class="modal-header cfg3-dict-header">
+          <div class="modal-title"><i class="fa-solid fa-location-dot"></i> 地理位置字典</div>
+          <div class="modal-close" @click="closeRegionDictModal"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+        <div class="modal-body cfg3-dict-body">
+          <aside class="cfg3-dict-side">
+            <button
+              v-for="cat in regionDictCategories"
+              :key="cat.id"
+              class="cfg3-dict-cat"
+              :class="{ active: regionDictState.category === cat.id }"
+              @click="regionDictState.category = cat.id">
+              <span>{{ cat.name }}</span>
+              <b>{{ cat.count }}</b>
+            </button>
+          </aside>
+
+          <section class="cfg3-dict-main">
+            <input
+              v-model="regionDictState.keyword"
+              class="cfg3-dict-search"
+              placeholder="支持跨分类全局搜索...">
+
+            <div class="cfg3-dict-grid">
+              <button
+                v-for="item in regionDictVisibleItems"
+                :key="item.id"
+                class="cfg3-dict-card"
+                :class="{ selected: regionDictSelectedSet.has(item.id) }"
+                @click="toggleRegionDictItem(item.id)">
+                <div class="cfg3-dict-icon"><i class="fa-solid fa-map-location-dot"></i></div>
+                <div class="cfg3-dict-meta">
+                  <div class="cfg3-dict-name">{{ item.name }}</div>
+                  <div class="cfg3-dict-sub">{{ item.province }} · {{ item.categoryName }}</div>
+                </div>
+                <div class="cfg3-dict-check"><i class="fa-solid" :class="regionDictSelectedSet.has(item.id) ? 'fa-circle-check' : 'fa-circle' "></i></div>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div class="modal-footer cfg3-dict-footer">
+          <span class="cfg3-dict-selected">已选：{{ regionDictState.selectedIds.length }} 项</span>
+          <div style="flex: 1;"></div>
+          <button class="modal-btn btn-tool" @click="closeRegionDictModal">取消</button>
+          <button class="modal-btn btn-primary" @click="applyRegionDictSelection">确认使用</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -879,20 +942,6 @@ const initialListData = (() => {
 
 const listData = ref(JSON.parse(JSON.stringify(initialListData)));
 
-const followList = ref([
-  { id: 1, name: '@shadow_pay', type: '高风险账号', risk: 'high', platforms: ['Telegram', 'X'], lastSeen: '8 分钟前', heat: 89, alerts24h: 16, muted: false },
-  { id: 2, name: '0xA91f...D33', type: '可疑钱包地址', risk: 'high', platforms: ['链上', 'Telegram'], lastSeen: '22 分钟前', heat: 93, alerts24h: 21, muted: false },
-  { id: 3, name: '沿海冷链灰链', type: '事件话题', risk: 'mid', platforms: ['Weibo', 'Telegram'], lastSeen: '1 小时前', heat: 74, alerts24h: 9, muted: false },
-  { id: 4, name: 'tor:chem_cell', type: '暗网账号', risk: 'mid', platforms: ['Tor'], lastSeen: '2 小时前', heat: 68, alerts24h: 6, muted: true }
-]);
-
-const monitorTopics = ref([
-  { id: 1, name: '跨境走私航线监测', status: '运行中', schedule: '每 30 分钟', coverage: 82, hits24h: 37, pendingReview: 8, sources: ['Telegram', 'Tor'] },
-  { id: 2, name: '涉毒隐语语义追踪', status: '运行中', schedule: '每 15 分钟', coverage: 91, hits24h: 52, pendingReview: 13, sources: ['Weibo', 'X', 'Telegram'] },
-  { id: 3, name: '暴恐传播链路识别', status: '已暂停', schedule: '每 1 小时', coverage: 64, hits24h: 11, pendingReview: 4, sources: ['Telegram', 'Tor'] },
-  { id: 4, name: '社工库交易扩散预警', status: '运行中', schedule: '每 45 分钟', coverage: 77, hits24h: 26, pendingReview: 7, sources: ['社工库', 'X'] }
-]);
-
 const topicList = ref([
   { id: 1, name: '毒品交易链路专题', owner: '刘洋', keywordCount: 128, sourceCount: 6, hits: 1362, status: '运行中', lastRun: '2026-03-29 10:18', desc: '围绕暗语、物流与收款地址识别涉毒交易组织链路。' },
   { id: 2, name: '跨境走私热点专题', owner: '陈昕', keywordCount: 97, sourceCount: 5, hits: 978, status: '运行中', lastRun: '2026-03-29 09:42', desc: '重点关注沿海港口、边境节点、匿名联络渠道异常。' },
@@ -905,8 +954,8 @@ const SUBSCRIPTION_TOPICS = [
   { id: 'TopicSmuggle', name: '非法走私' },
   { id: 'TopicTerror', name: '恐怖暴力' },
   { id: 'TopicDataLeak', name: '数据泄露' },
-  { id: 'TopicTaiwan', name: '台湾' },
-  { id: 'TopicRansom', name: '勒索软件' }
+  { id: 'TopicCybercrime', name: '网络黑产' },
+  { id: 'TopicAPT', name: 'APT攻击' }
 ];
 
 const subscriptionRules = ref([
@@ -925,6 +974,12 @@ const subscriptionRules = ref([
     schedule: '每 15 分钟',
     desc: '对涉毒高危线索进行实时订阅并转发值班组。',
     astExpression: '',
+    astTree: {
+      id: 'group-seed-root',
+      op: 'AND',
+      conditions: [{ id: 'cond-seed-1', field: 'threat_category', operator: 'in', value: 'TopicDrugs,TopicSmuggle' }],
+      groups: []
+    },
     updatedAt: toDateTimeString(new Date())
   }
 ]);
@@ -935,7 +990,10 @@ const subscriptionState = reactive({
   step: 1,
   ruleMode: 'basic',
   titleEditing: false,
-  titleBackup: ''
+  titleBackup: '',
+  modeModalOpen: false,
+  pendingRuleMode: '',
+  modeSwitchPreview: null
 });
 
 const subscriptionEditor = reactive({
@@ -965,9 +1023,148 @@ const subscriptionEditor = reactive({
   priority: 50,
   note: '',
   astExpression: '',
+  astTree: {
+    id: 'group-editor-root',
+    op: 'AND',
+    conditions: [{ id: 'cond-editor-1', field: 'threat_category', operator: 'in', value: '' }],
+    groups: []
+  },
   rbacVisibility: '仅自己',
   editorIds: ''
 });
+
+let astNodeSeq = 0;
+const nextAstNodeId = (prefix = 'ast') => `${prefix}-${Date.now()}-${astNodeSeq++}`;
+
+const AST_FIELD_OPTIONS = [
+  { value: 'threat_category', label: '威胁专题', type: 'string' },
+  { value: 'severity', label: '危害等级', type: 'string' },
+  { value: 'risk_score', label: '风险分', type: 'number' },
+  { value: 'source_platform', label: '来源平台', type: 'string' },
+  { value: 'source_handle', label: '来源账号/频道', type: 'string' },
+  { value: 'entity_type', label: '实体类型', type: 'string' },
+  { value: 'entity_value', label: '实体值', type: 'string' },
+  { value: 'labels', label: '标签列表', type: 'array' },
+  { value: 'ioc_location', label: '地域 IOC', type: 'array' },
+  { value: 'raw_content', label: '正文内容', type: 'string' }
+];
+
+const AST_OP_MAP = {
+  string: [
+    { value: 'eq', label: '等于' },
+    { value: 'neq', label: '不等于' },
+    { value: 'contains', label: '包含' },
+    { value: 'in', label: '属于列表' },
+    { value: 'regex', label: '正则匹配' },
+    { value: 'exists', label: '存在' },
+    { value: 'not_exists', label: '不存在' }
+  ],
+  number: [
+    { value: 'eq', label: '等于' },
+    { value: 'gte', label: '大于等于' },
+    { value: 'lte', label: '小于等于' },
+    { value: 'range', label: '区间 Min,Max' },
+    { value: 'exists', label: '存在' },
+    { value: 'not_exists', label: '不存在' }
+  ],
+  array: [
+    { value: 'contains', label: '包含任一项' },
+    { value: 'in', label: '完全命中列表' },
+    { value: 'exists', label: '存在' },
+    { value: 'not_exists', label: '不存在' }
+  ]
+};
+
+const AST_FIELD_TYPE = AST_FIELD_OPTIONS.reduce((acc, item) => {
+  acc[item.value] = item.type;
+  return acc;
+}, {});
+
+const createAstCondition = (field = 'threat_category') => {
+  const type = AST_FIELD_TYPE[field] || 'string';
+  return {
+    id: nextAstNodeId('cond'),
+    field,
+    operator: AST_OP_MAP[type][0].value,
+    value: ''
+  };
+};
+
+const createAstGroup = (op = 'AND') => ({
+  id: nextAstNodeId('group'),
+  op,
+  conditions: [createAstCondition()],
+  groups: []
+});
+
+const cloneAstTree = (tree) => JSON.parse(JSON.stringify(tree));
+
+const REGION_DICT_LIBRARY = [
+  { id: 'gd', name: '广东省', province: '广东', category: 'domestic', categoryName: '国内高发区' },
+  { id: 'yn', name: '云南省', province: '云南', category: 'domestic', categoryName: '国内高发区' },
+  { id: 'mb', name: '缅北', province: '缅北', category: 'overseas', categoryName: '境外监控区' },
+  { id: 'jsj', name: '金三角', province: '金三角', category: 'overseas', categoryName: '境外监控区' }
+];
+
+const regionDictState = reactive({
+  open: false,
+  category: 'all',
+  keyword: '',
+  selectedIds: []
+});
+
+const regionDictSelectedSet = computed(() => new Set(regionDictState.selectedIds));
+
+const regionDictCategories = computed(() => {
+  const domesticCount = REGION_DICT_LIBRARY.filter(item => item.category === 'domestic').length;
+  const overseasCount = REGION_DICT_LIBRARY.filter(item => item.category === 'overseas').length;
+  return [
+    { id: 'all', name: '全部分类', count: REGION_DICT_LIBRARY.length },
+    { id: 'domestic', name: '国内高发区', count: domesticCount },
+    { id: 'overseas', name: '境外监控区', count: overseasCount }
+  ];
+});
+
+const regionDictVisibleItems = computed(() => {
+  const keyword = (regionDictState.keyword || '').trim().toLowerCase();
+  return REGION_DICT_LIBRARY.filter((item) => {
+    const hitCategory = regionDictState.category === 'all' || item.category === regionDictState.category;
+    if (!hitCategory) return false;
+    if (!keyword) return true;
+    const text = `${item.name} ${item.province} ${item.categoryName}`.toLowerCase();
+    return text.includes(keyword);
+  });
+});
+
+const toggleRegionDictItem = (itemId) => {
+  if (regionDictSelectedSet.value.has(itemId)) {
+    regionDictState.selectedIds = regionDictState.selectedIds.filter(id => id !== itemId);
+    return;
+  }
+  regionDictState.selectedIds = [...regionDictState.selectedIds, itemId];
+};
+
+const openRegionDictModal = () => {
+  const tokens = splitValues(subscriptionEditor.regionFocus).map(item => item.toLowerCase());
+  regionDictState.selectedIds = REGION_DICT_LIBRARY
+    .filter(item => tokens.some(token => token === item.name.toLowerCase() || token === item.province.toLowerCase()))
+    .map(item => item.id);
+  regionDictState.category = 'all';
+  regionDictState.keyword = '';
+  regionDictState.open = true;
+};
+
+const closeRegionDictModal = () => {
+  regionDictState.open = false;
+};
+
+const applyRegionDictSelection = () => {
+  const names = REGION_DICT_LIBRARY
+    .filter(item => regionDictSelectedSet.value.has(item.id))
+    .map(item => item.name);
+  subscriptionEditor.regionFocus = names.join(',');
+  closeRegionDictModal();
+};
 
 // === 2. 集中化状态管理 (对应原版 APP_STATE) ===
 const state = reactive({
@@ -995,10 +1192,7 @@ const filters = reactive({
 
 const activeModuleMeta = computed(() => {
   if (state.activeModule === 'follow') {
-    return { title: '我的关注', subtitle: '高价值对象持续追踪与动态预警', countText: `${followList.value.length} 个关注对象` };
-  }
-  if (state.activeModule === 'monitor') {
-    return { title: '专题监测', subtitle: '任务运行状态、覆盖率与命中趋势', countText: `${monitorTopics.value.length} 个监测任务` };
+    return { title: '我的关注', subtitle: '从告警列表中手动关注的重点线索', countText: `${followedAlerts.value.length} 条关注线索` };
   }
   if (state.activeModule === 'subscription') {
     return { title: '订阅监测', subtitle: '订阅路由与治理编排中枢', countText: `${subscriptionRules.value.length} 条订阅规则` };
@@ -1009,18 +1203,15 @@ const activeModuleMeta = computed(() => {
   return { title: '告警信息', subtitle: '多源风险告警聚合研判中心', countText: `${filteredList.value.length} 条线索` };
 });
 
-const followSummary = computed(() => ({
-  total: followList.value.length,
-  high: followList.value.filter(item => item.risk === 'high').length,
-  alerts24h: followList.value.reduce((sum, item) => sum + item.alerts24h, 0),
-  muted: followList.value.filter(item => item.muted).length
-}));
+const followedAlerts = computed(() => {
+  return listData.value.filter(item => item.followed && !item.falsePositive);
+});
 
-const monitorSummary = computed(() => ({
-  running: monitorTopics.value.filter(item => item.status === '运行中').length,
-  paused: monitorTopics.value.filter(item => item.status !== '运行中').length,
-  hits24h: monitorTopics.value.reduce((sum, item) => sum + item.hits24h, 0),
-  pending: monitorTopics.value.reduce((sum, item) => sum + item.pendingReview, 0)
+const followSummary = computed(() => ({
+  total: followedAlerts.value.length,
+  high: followedAlerts.value.filter(item => item.risk === 'high').length,
+  mid: followedAlerts.value.filter(item => item.risk === 'mid').length,
+  low: followedAlerts.value.filter(item => item.risk === 'low').length
 }));
 
 const topicSummary = computed(() => ({
@@ -1041,7 +1232,16 @@ onMounted(() => {
 const availableTopics = computed(() => [...new Set(listData.value.map(item => item.topic))].filter(Boolean));
 const availableRegions = computed(() => [...new Set(listData.value.map(item => getProvince(item.region)))].filter(Boolean));
 
-const getTopicName = (topic) => ({ 'TopicTaiwan': '台湾', 'TopicDataLeak': '数据泄露', 'TopicRansom': '勒索软件', 'TopicDrugs': '毒品交易', 'TopicTerror': '恐怖暴力', 'TopicSmuggle': '非法走私' }[topic] || topic);
+const getTopicName = (topic) => ({
+  'TopicCybercrime': '网络黑产',
+  'TopicAPT': 'APT攻击',
+  'TopicTaiwan': '网络黑产',
+  'TopicRansom': 'APT攻击',
+  'TopicDataLeak': '数据泄露',
+  'TopicDrugs': '毒品交易',
+  'TopicTerror': '恐怖暴力',
+  'TopicSmuggle': '非法走私'
+}[topic] || topic);
 const getRiskText = (risk) => ({ high: '高危', mid: '中危', low: '低危' }[risk] || risk);
 const getRuleName = (code) => ({ 'Rule_Drug_Slang': '涉毒黑话检测', 'Rule_Terror_Action': '高危行为意图', 'Rule_Smuggle_Route': '走私路径监控', 'Rule_Crypto_Transfer': '暗网加密交易' }[code] || code);
 const getIndustryName = (ind) => ({ 'Finance': '金融', 'Gov': '政府', 'Tech': '科技', 'Edu': '教育', 'Health': '医疗' }[ind] || ind);
@@ -1071,9 +1271,10 @@ const sourceFromPlatform = (platforms = []) => {
 const getTopicCodeByName = (name = '') => {
   if (name.includes('毒品') || name.includes('涉毒')) return 'TopicDrugs';
   if (name.includes('走私')) return 'TopicSmuggle';
-  if (name.includes('黑产') || name.includes('泄露')) return 'TopicDataLeak';
+  if (name.includes('黑产') || name.includes('台湾')) return 'TopicCybercrime';
+  if (name.includes('APT') || name.includes('勒索')) return 'TopicAPT';
+  if (name.includes('泄露')) return 'TopicDataLeak';
   if (name.includes('暴恐') || name.includes('恐怖')) return 'TopicTerror';
-  if (name.includes('台湾')) return 'TopicTaiwan';
   return 'all';
 };
 
@@ -1199,20 +1400,13 @@ const resetAlertFiltersByPreset = () => {
   state.pagination.currentPage = 1;
 };
 
-const openFollowInAlerts = (item) => {
+const openFollowedAlertInAlerts = (item) => {
   resetAlertFiltersByPreset();
   state.activeModule = 'alerts';
-  state.searchQuery = item.name;
+  state.searchQuery = item.title || item.author || '';
   filters.risk = item.risk;
-  filters.media = sourceFromPlatform(item.platforms);
-};
-
-const openMonitorInAlerts = (item) => {
-  resetAlertFiltersByPreset();
-  state.activeModule = 'alerts';
-  state.searchQuery = item.name;
-  filters.topic = getTopicCodeByName(item.name);
-  filters.media = sourceFromPlatform(item.sources);
+  filters.media = item.source || 'all';
+  filters.topic = item.topic || 'all';
 };
 
 const openTopicInAlerts = (topic) => {
@@ -1239,8 +1433,7 @@ const selectedSubscriptionRule = computed(() => {
 const subscriptionSummary = computed(() => ({
   total: subscriptionRules.value.length,
   applied: subscriptionRules.value.filter((rule) => rule.status === 'applied').length,
-  draft: subscriptionRules.value.filter((rule) => rule.status !== 'applied').length,
-  monitorSync: monitorTopics.value.filter((item) => item.subscriptionRuleId).length
+  draft: subscriptionRules.value.filter((rule) => rule.status !== 'applied').length
 }));
 
 const subscriptionSandboxStats = reactive({ hit: 0, push: 0, digest: 0, drop: 0 });
@@ -1251,6 +1444,244 @@ const sandboxEvents = ref([]);
 
 const severityWeight = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
 const splitValues = (text = '') => String(text || '').split(/[，,|/\n]/).map(v => v.trim()).filter(Boolean);
+
+const normalizeAstTree = (input) => {
+  const walk = (node) => {
+    const raw = node && typeof node === 'object' ? node : {};
+    const op = ['AND', 'OR', 'NOT'].includes(raw.op) ? raw.op : 'AND';
+    const conditions = Array.isArray(raw.conditions) ? raw.conditions.map((item) => {
+      const field = AST_FIELD_TYPE[item?.field] ? item.field : 'threat_category';
+      const type = AST_FIELD_TYPE[field] || 'string';
+      const validOps = AST_OP_MAP[type].map(opItem => opItem.value);
+      return {
+        id: item?.id || nextAstNodeId('cond'),
+        field,
+        operator: validOps.includes(item?.operator) ? item.operator : AST_OP_MAP[type][0].value,
+        value: String(item?.value || '')
+      };
+    }) : [];
+    const groups = Array.isArray(raw.groups) ? raw.groups.map(walk) : [];
+    return {
+      id: raw.id || nextAstNodeId('group'),
+      op,
+      conditions,
+      groups
+    };
+  };
+
+  const root = walk(input);
+  if (!root.conditions.length && !root.groups.length) {
+    root.conditions.push(createAstCondition());
+  }
+  return root;
+};
+
+const flattenAstGroups = (group, level = 0, acc = []) => {
+  if (!group) return acc;
+  acc.push({ group, level, isRoot: level === 0 });
+  (group.groups || []).forEach((child) => flattenAstGroups(child, level + 1, acc));
+  return acc;
+};
+
+const astGroupRows = computed(() => flattenAstGroups(subscriptionEditor.astTree));
+
+const findAstGroupById = (root, groupId) => {
+  if (!root) return null;
+  if (root.id === groupId) return root;
+  for (const child of root.groups || []) {
+    const found = findAstGroupById(child, groupId);
+    if (found) return found;
+  }
+  return null;
+};
+
+const removeAstGroupById = (root, groupId) => {
+  if (!root?.groups?.length) return false;
+  const idx = root.groups.findIndex(item => item.id === groupId);
+  if (idx >= 0) {
+    root.groups.splice(idx, 1);
+    return true;
+  }
+  return root.groups.some(item => removeAstGroupById(item, groupId));
+};
+
+const getAstOperators = (field) => {
+  const type = AST_FIELD_TYPE[field] || 'string';
+  return AST_OP_MAP[type] || AST_OP_MAP.string;
+};
+
+const syncAstConditionOperator = (cond) => {
+  const validOps = getAstOperators(cond.field).map(item => item.value);
+  if (!validOps.includes(cond.operator)) {
+    cond.operator = validOps[0];
+  }
+};
+
+const isAstUnaryOperator = (operator) => operator === 'exists' || operator === 'not_exists';
+
+const getAstValuePlaceholder = (field, operator) => {
+  if (operator === 'range') return '例如：70,100';
+  if (operator === 'in') return AST_FIELD_TYPE[field] === 'array' ? '例如：贩毒,暗网担保' : '例如：TopicDrugs,TopicSmuggle';
+  if (operator === 'regex') return '例如：(?i)担保|跑分';
+  return '输入比较值';
+};
+
+const addAstCondition = (groupId) => {
+  const root = normalizeAstTree(subscriptionEditor.astTree);
+  const group = findAstGroupById(root, groupId);
+  if (!group) return;
+  group.conditions.push(createAstCondition());
+  subscriptionEditor.astTree = root;
+};
+
+const removeAstCondition = (groupId, condId) => {
+  const root = normalizeAstTree(subscriptionEditor.astTree);
+  const group = findAstGroupById(root, groupId);
+  if (!group) return;
+  group.conditions = (group.conditions || []).filter(item => item.id !== condId);
+  if (!group.conditions.length && !group.groups.length) {
+    group.conditions.push(createAstCondition());
+  }
+  subscriptionEditor.astTree = root;
+};
+
+const addAstSubgroup = (groupId) => {
+  const root = normalizeAstTree(subscriptionEditor.astTree);
+  const group = findAstGroupById(root, groupId);
+  if (!group) return;
+  group.groups.push(createAstGroup('AND'));
+  subscriptionEditor.astTree = root;
+};
+
+const removeAstGroup = (groupId) => {
+  const root = normalizeAstTree(subscriptionEditor.astTree);
+  if (root.id === groupId) return;
+  removeAstGroupById(root, groupId);
+  subscriptionEditor.astTree = root;
+};
+
+const formatAstValue = (cond) => {
+  if (isAstUnaryOperator(cond.operator)) return '';
+  if (cond.operator === 'in' || cond.operator === 'range') {
+    return `[${splitValues(cond.value).join(',')}]`;
+  }
+  if (AST_FIELD_TYPE[cond.field] === 'number') return cond.value;
+  return `'${String(cond.value || '').replace(/'/g, "\\'")}'`;
+};
+
+const stringifyAstCondition = (cond) => {
+  const field = cond.field || 'threat_category';
+  const opMap = {
+    eq: '==',
+    neq: '!=',
+    contains: 'contains',
+    in: 'in',
+    regex: 'regex',
+    gte: '>=',
+    lte: '<=',
+    range: 'range',
+    exists: 'exists',
+    not_exists: 'not_exists'
+  };
+
+  if (cond.operator === 'exists' || cond.operator === 'not_exists') {
+    return `${field} ${opMap[cond.operator]}`;
+  }
+  return `${field} ${opMap[cond.operator] || '=='} ${formatAstValue(cond)}`;
+};
+
+const buildAstExpression = (group) => {
+  if (!group) return '';
+  const entries = [
+    ...(group.conditions || []).map(stringifyAstCondition),
+    ...(group.groups || []).map(child => buildAstExpression(child)).filter(Boolean)
+  ].filter(Boolean);
+  if (!entries.length) return '';
+  if (group.op === 'NOT') return `NOT (${entries.join(' OR ')})`;
+  const sep = ` ${group.op} `;
+  return entries.length > 1 ? `(${entries.join(sep)})` : entries[0];
+};
+
+const hasEffectiveAstCondition = (group) => {
+  if (!group) return false;
+  const selfValid = (group.conditions || []).some((cond) => {
+    if (isAstUnaryOperator(cond.operator)) return true;
+    if (cond.operator === 'in' || cond.operator === 'range') return splitValues(cond.value).length > 0;
+    return String(cond.value || '').trim().length > 0;
+  });
+  if (selfValid) return true;
+  return (group.groups || []).some(child => hasEffectiveAstCondition(child));
+};
+
+const refreshAstExpression = () => {
+  const root = subscriptionEditor.astTree || createAstGroup('AND');
+  subscriptionEditor.astExpression = buildAstExpression(root);
+};
+
+const buildRuleModePreview = (targetMode) => {
+  const now = toDateTimeString(new Date());
+  const request = {
+    action: 'switch_rule_mode',
+    from_mode: subscriptionState.ruleMode,
+    to_mode: targetMode,
+    rule_id: subscriptionState.selectedId,
+    request_time: now
+  };
+
+  if (targetMode === 'basic') {
+    return {
+      request,
+      response: {
+        mode: 'basic',
+        basic: {
+          topics: subscriptionEditor.topics,
+          severity: subscriptionEditor.minSeverity,
+          risk_min: Number(subscriptionEditor.riskMin || 0),
+          locations: splitValues(subscriptionEditor.regionFocus),
+          labels: splitValues(subscriptionEditor.bizTagFocus)
+        }
+      }
+    };
+  }
+
+  return {
+    request,
+    response: {
+      mode: 'ast',
+      ast: {
+        expression: buildAstExpression(normalizeAstTree(subscriptionEditor.astTree)),
+        logic_tree: normalizeAstTree(subscriptionEditor.astTree)
+      }
+    }
+  };
+};
+
+const requestRuleModeSwitch = (targetMode) => {
+  if (targetMode === subscriptionState.ruleMode) return;
+  subscriptionState.pendingRuleMode = targetMode;
+  subscriptionState.modeSwitchPreview = buildRuleModePreview(targetMode);
+  subscriptionState.modeModalOpen = true;
+};
+
+const closeRuleModeSwitchModal = () => {
+  subscriptionState.modeModalOpen = false;
+  subscriptionState.pendingRuleMode = '';
+  subscriptionState.modeSwitchPreview = null;
+};
+
+const applyRuleModeSwitch = () => {
+  if (!subscriptionState.pendingRuleMode) {
+    closeRuleModeSwitchModal();
+    return;
+  }
+  subscriptionState.ruleMode = subscriptionState.pendingRuleMode;
+  if (subscriptionState.ruleMode === 'ast') {
+    refreshAstExpression();
+  }
+  if (sandboxInputText.value) runSandboxFromInput();
+  closeRuleModeSwitchModal();
+};
+
 const dedupeKeyLabelToMode = {
   '不过滤 (每条独立推送)': 'none',
   '内容哈希': 'content_hash',
@@ -1355,7 +1786,95 @@ const buildSandboxInput = (mode = 'smart') => {
   ];
 };
 
+const getAstEventFieldValue = (ev, field) => {
+  if (field === 'labels') return Array.isArray(ev.labels) ? ev.labels : [];
+  if (field === 'ioc_location') return Array.isArray(ev.ioc_location) ? ev.ioc_location : [];
+  return ev[field];
+};
+
+const evalAstCondition = (cond, ev) => {
+  const fieldType = AST_FIELD_TYPE[cond.field] || 'string';
+  const leftRaw = getAstEventFieldValue(ev, cond.field);
+
+  if (cond.operator === 'exists') {
+    if (Array.isArray(leftRaw)) return leftRaw.length > 0;
+    return !(leftRaw === undefined || leftRaw === null || String(leftRaw).trim() === '');
+  }
+  if (cond.operator === 'not_exists') {
+    if (Array.isArray(leftRaw)) return leftRaw.length === 0;
+    return leftRaw === undefined || leftRaw === null || String(leftRaw).trim() === '';
+  }
+
+  if (fieldType === 'number') {
+    const left = Number(leftRaw);
+    if (!Number.isFinite(left)) return false;
+    if (cond.operator === 'range') {
+      const values = splitValues(cond.value).map(Number).filter(Number.isFinite);
+      if (values.length < 2) return false;
+      const [min, max] = values;
+      return left >= min && left <= max;
+    }
+    const right = Number(String(cond.value || '').trim());
+    if (!Number.isFinite(right)) return false;
+    if (cond.operator === 'eq') return left === right;
+    if (cond.operator === 'gte') return left >= right;
+    if (cond.operator === 'lte') return left <= right;
+    return false;
+  }
+
+  if (fieldType === 'array') {
+    const left = (Array.isArray(leftRaw) ? leftRaw : []).map(v => String(v).toLowerCase());
+    const right = splitValues(cond.value).map(v => v.toLowerCase());
+    if (!right.length) return false;
+    if (cond.operator === 'contains') return right.some(v => left.includes(v));
+    if (cond.operator === 'in') return right.every(v => left.includes(v));
+    return false;
+  }
+
+  const left = String(leftRaw || '').toLowerCase();
+  const right = String(cond.value || '').trim().toLowerCase();
+  if (cond.operator === 'eq') return left === right;
+  if (cond.operator === 'neq') return left !== right;
+  if (cond.operator === 'contains') return right ? left.includes(right) : false;
+  if (cond.operator === 'in') {
+    const values = splitValues(cond.value).map(v => v.toLowerCase());
+    return values.includes(left);
+  }
+  if (cond.operator === 'regex') {
+    try {
+      return new RegExp(cond.value || '', 'i').test(String(leftRaw || ''));
+    } catch {
+      return false;
+    }
+  }
+  return false;
+};
+
+const evalAstGroup = (group, ev) => {
+  const condResults = (group.conditions || []).map(cond => evalAstCondition(cond, ev));
+  const childResults = (group.groups || []).map(child => evalAstGroup(child, ev));
+  const allResults = [...condResults, ...childResults];
+  if (!allResults.length) return false;
+  if (group.op === 'OR') return allResults.some(Boolean);
+  if (group.op === 'NOT') return !allResults.some(Boolean);
+  return allResults.every(Boolean);
+};
+
 const evaluateSandboxEvent = (ev) => {
+  if (subscriptionState.ruleMode === 'ast') {
+    const tree = normalizeAstTree(subscriptionEditor.astTree);
+    const pass = evalAstGroup(tree, ev);
+    return {
+      pass,
+      missReason: pass ? '' : 'AST 条件树未命中',
+      trace: {
+        mode: 'ast',
+        expression: buildAstExpression(tree),
+        astTree: tree
+      }
+    };
+  }
+
   const minSeverity = subscriptionEditor.minSeverity || 'HIGH';
   const minRisk = Number(subscriptionEditor.riskMin || 70);
   const matchTopic = !(subscriptionEditor.topics || []).length || (subscriptionEditor.topics || []).includes(ev.threat_category);
@@ -1389,6 +1908,7 @@ const evaluateSandboxEvent = (ev) => {
     pass,
     missReason: pass ? '' : failReason,
     trace: {
+      mode: 'basic',
       topic: matchTopic,
       source: matchSource,
       severity: matchSeverity,
@@ -1571,12 +2091,25 @@ watch(
     subscriptionEditor.dedupWindow,
     subscriptionEditor.rateLimit,
     subscriptionEditor.overflowAction,
-    subscriptionEditor.enabled
+    subscriptionEditor.enabled,
+    subscriptionState.ruleMode
   ],
   () => {
+    if (subscriptionState.ruleMode === 'ast') refreshAstExpression();
     if (!sandboxInputText.value) return;
     runSandboxFromInput();
   }
+);
+
+watch(
+  () => subscriptionEditor.astTree,
+  () => {
+    if (subscriptionState.ruleMode !== 'ast') return;
+    refreshAstExpression();
+    if (!sandboxInputText.value) return;
+    runSandboxFromInput();
+  },
+  { deep: true }
 );
 
 const ensureSubscriptionSelection = () => {
@@ -1622,7 +2155,8 @@ const syncSubscriptionEditor = () => {
   subscriptionEditor.telegramIds = rule.telegramIds || '@ops_channel';
   subscriptionEditor.priority = Number(rule.priority ?? 50);
   subscriptionEditor.note = rule.note || '';
-  subscriptionEditor.astExpression = rule.astExpression || '';
+  subscriptionEditor.astTree = normalizeAstTree(rule.astTree);
+  subscriptionEditor.astExpression = rule.astExpression || buildAstExpression(subscriptionEditor.astTree);
   subscriptionEditor.rbacVisibility = rule.rbacVisibility || '仅自己';
   subscriptionEditor.editorIds = rule.editorIds || '';
 };
@@ -1654,7 +2188,10 @@ const persistSubscriptionEditor = () => {
   rule.telegramIds = (subscriptionEditor.telegramIds || '').trim();
   rule.priority = Number(subscriptionEditor.priority || 50);
   rule.note = (subscriptionEditor.note || '').trim();
-  rule.astExpression = (subscriptionEditor.astExpression || '').trim();
+  rule.astTree = cloneAstTree(normalizeAstTree(subscriptionEditor.astTree));
+  rule.astExpression = (subscriptionState.ruleMode === 'ast'
+    ? buildAstExpression(rule.astTree)
+    : (subscriptionEditor.astExpression || '')).trim();
   rule.rbacVisibility = subscriptionEditor.rbacVisibility || '仅自己';
   rule.editorIds = (subscriptionEditor.editorIds || '').trim();
   rule.updatedAt = toDateTimeString(new Date());
@@ -1665,7 +2202,11 @@ const validateSubscriptionEditor = () => {
   if (!(subscriptionEditor.name || '').trim()) return '规则名称不能为空';
   if (!(subscriptionEditor.owner || '').trim()) return '责任人不能为空';
   if (subscriptionState.ruleMode === 'basic' && !(subscriptionEditor.topics || []).length) return '至少选择一个监测专题';
-  if (subscriptionState.ruleMode === 'ast' && !(subscriptionEditor.astExpression || '').trim()) return 'AST 模式下请填写表达式';
+  if (subscriptionState.ruleMode === 'ast') {
+    const tree = normalizeAstTree(subscriptionEditor.astTree);
+    const expression = buildAstExpression(tree);
+    if (!expression.trim() || !hasEffectiveAstCondition(tree)) return 'AST 模式下请至少配置一个有效条件';
+  }
   if (!(subscriptionEditor.sources || []).length) return '至少选择一个监测来源';
   if (!(subscriptionEditor.channels || []).length) return '至少选择一个分发通道';
   return '';
@@ -1729,6 +2270,7 @@ const createSubscriptionRule = () => {
     priority: 50,
     note: '',
     astExpression: '',
+    astTree: createAstGroup('AND'),
     rbacVisibility: '仅自己',
     editorIds: '',
     updatedAt: toDateTimeString(new Date())
@@ -1751,30 +2293,6 @@ const saveSubscriptionDraft = () => {
   alertMock('订阅规则草稿已保存');
 };
 
-const upsertMonitorTaskFromSubscription = (rule) => {
-  const matched = monitorTopics.value.find((item) => item.subscriptionRuleId === rule.id);
-  const task = {
-    name: `订阅监测｜${rule.name}`,
-    status: rule.enabled ? '运行中' : '已暂停',
-    schedule: rule.schedule,
-    coverage: Math.min(98, 55 + (rule.topics.length * 8) + (rule.sources.length * 4)),
-    hits24h: Math.max(6, Math.round(subscriptionSandbox.value.hit * 0.5)),
-    pendingReview: Math.max(1, Math.round(subscriptionSandbox.value.drop * 0.2)),
-    sources: [...rule.sources]
-  };
-
-  if (matched) {
-    Object.assign(matched, task);
-    return;
-  }
-
-  monitorTopics.value.unshift({
-    id: Date.now(),
-    subscriptionRuleId: rule.id,
-    ...task
-  });
-};
-
 const publishSubscriptionRule = () => {
   const err = validateSubscriptionEditor();
   if (err) {
@@ -1784,7 +2302,6 @@ const publishSubscriptionRule = () => {
   const rule = persistSubscriptionEditor();
   if (!rule) return;
   rule.status = 'applied';
-  upsertMonitorTaskFromSubscription(rule);
   alertMock(`订阅规则已发布：将对 ${rule.topics.map(getTopicName).join(' / ')} 执行监测`);
 };
 
@@ -1793,7 +2310,6 @@ const deleteSubscriptionRule = () => {
   if (!rule) return;
   if (!confirm('确定删除当前订阅规则吗？')) return;
   subscriptionRules.value = subscriptionRules.value.filter((item) => item.id !== rule.id);
-  monitorTopics.value = monitorTopics.value.filter((item) => item.subscriptionRuleId !== rule.id);
   subscriptionState.selectedId = subscriptionRules.value[0]?.id || '';
   ensureSubscriptionSelection();
 };
@@ -1811,17 +2327,10 @@ const toggleImmersiveMode = () => {
   state.leftCollapsed = state.rightCollapsed = state.isFilterCollapsed = state.isImmersive;
 };
 
-const toggleFollowMute = (item) => {
-  item.muted = !item.muted;
-};
-
-const toggleMonitorStatus = (item) => {
-  item.status = item.status === '运行中' ? '已暂停' : '运行中';
-};
-
-const runMonitorNow = (item) => {
-  item.hits24h += Math.floor(Math.random() * 3);
-  alertMock(`已触发「${item.name}」立即运行`);
+const toggleAlertFollow = (targetItem) => {
+  const source = listData.value.find((item) => item.id === targetItem.id);
+  if (!source) return;
+  source.followed = !source.followed;
 };
 
 const toggleTopicStatus = (topic) => {
@@ -1844,7 +2353,9 @@ const saveFilters = () => alert('筛选条件已保存');
 const markAsRead = (item) => item.read = true;
 const markFalsePositive = (item) => {
   if (confirm('确定将此线索标记为“误报/噪音”吗？\n标记后该线索将从待办列表和统计图中彻底剔除。')) {
-    item.falsePositive = true; item.selected = false;
+    item.falsePositive = true;
+    item.selected = false;
+    item.followed = false;
   }
 };
 const mockTranslate = (e) => {
@@ -2369,6 +2880,145 @@ ensureSubscriptionSelection();
   background: rgba(30, 41, 59, 0.5);
 }
 
+.cfg3-ast-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cfg3-ast-group-row {
+  border: 1px solid rgba(41, 77, 132, 0.72);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(9, 22, 48, 0.88), rgba(8, 18, 38, 0.88));
+  padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+}
+.cfg3-ast-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+.cfg3-ast-op-select {
+  width: 150px;
+  min-width: 150px;
+  height: 42px;
+  border-radius: 8px;
+  border-color: rgba(59, 130, 246, 0.62);
+  color: #60a5fa;
+  font-weight: 700;
+  font-size: 14px;
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.2), rgba(30, 64, 175, 0.08));
+  box-shadow: inset 0 1px 0 rgba(147, 197, 253, 0.18);
+}
+.cfg3-ast-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: nowrap;
+}
+.cfg3-ast-mini-btn {
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(74, 98, 141, 0.72);
+  background: rgba(13, 24, 44, 0.68);
+  color: #f1f5f9;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cfg3-ast-mini-btn i { font-size: 15px; }
+.cfg3-ast-mini-btn:hover {
+  border-color: rgba(96, 165, 250, 0.78);
+  color: #fff;
+  background: rgba(22, 37, 66, 0.82);
+}
+.cfg3-ast-mini-btn.danger {
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fecaca;
+}
+.cfg3-ast-condition-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cfg3-ast-condition-row {
+  display: grid;
+  grid-template-columns: 340px 220px 1fr 56px 32px;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(38, 77, 138, 0.75);
+  border-radius: 10px;
+  background: rgba(10, 22, 45, 0.9);
+  padding: 12px;
+}
+.cfg3-ast-field-select,
+.cfg3-ast-opr-select,
+.cfg3-ast-value-input {
+  height: 48px;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.78);
+  border: 1px solid rgba(71, 93, 132, 0.78);
+}
+.cfg3-ast-field-select { min-width: 180px; }
+.cfg3-ast-opr-select { min-width: 120px; }
+.cfg3-ast-value-input {
+  min-width: 200px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.cfg3-ast-unary-tip {
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px dashed rgba(71, 93, 132, 0.7);
+  color: #8ea5c4;
+  font-size: 13px;
+}
+.cfg3-ast-mark {
+  width: 56px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid #3b82f6;
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  color: #eff6ff;
+  cursor: pointer;
+  font-size: 16px;
+}
+.cfg3-ast-mark:hover {
+  filter: brightness(1.05);
+}
+.cfg3-ast-del {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #8ea5c4;
+  cursor: pointer;
+}
+.cfg3-ast-del:hover {
+  color: #fff;
+  border-color: rgba(100, 116, 139, 0.72);
+  background: rgba(30, 41, 59, 0.75);
+}
+.cfg3-ast-empty-tip {
+  margin-top: 10px;
+  border: 1px dashed rgba(71, 93, 132, 0.7);
+  border-radius: 8px;
+  color: #8ea5c4;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px;
+}
+
 .cfg3-section-title { margin-top: 12px; margin-bottom: 8px; font-size: 13px; color: #93c5fd; display: flex; align-items: center; gap: 6px; }
 .cfg3-topic-grid {
   display: grid;
@@ -2397,6 +3047,32 @@ ensureSubscriptionSelection();
 .cfg3-bottom-grid { margin-top: 10px; }
 .cfg3-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .cfg3-field label { color: #9fb0c9; font-size: 12px; display: flex; gap: 6px; align-items: center; }
+.cfg3-label-with-action {
+  justify-content: space-between;
+  align-items: center;
+}
+.cfg3-label-with-action span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cfg3-dict-trigger {
+  height: 30px;
+  border: 1px solid rgba(59, 130, 246, 0.58);
+  border-radius: 8px;
+  background: rgba(30, 58, 138, 0.16);
+  color: #dbeafe;
+  font-size: 12px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.cfg3-dict-trigger:hover {
+  border-color: rgba(96, 165, 250, 0.92);
+  background: rgba(30, 64, 175, 0.3);
+}
 .cfg3-channel-box {
   margin-top: 8px;
   border: 1px solid rgba(71, 93, 132, 0.4);
@@ -2845,11 +3521,14 @@ ensureSubscriptionSelection();
 
 /* ====== 操作按钮 ====== */
 .item-actions { position: absolute; right: 15px; bottom: 12px; display: flex; gap: 10px; }
-.detail-btn, .export-item-btn, .fp-btn, .translate-btn { padding: 5px 12px; border: 1px solid; background: transparent; cursor: pointer; font-size: 12px; border-radius: 4px; transition: 0.2s; font-weight: 500; }
+.detail-btn, .export-item-btn, .fp-btn, .translate-btn, .follow-btn { padding: 5px 12px; border: 1px solid; background: transparent; cursor: pointer; font-size: 12px; border-radius: 4px; transition: 0.2s; font-weight: 500; }
 .detail-btn { border-color: var(--accent-blue); color: var(--accent-blue); }
 .detail-btn:hover { background: rgba(59, 130, 246, 0.15); }
 .export-item-btn { border-color: var(--accent-green); color: var(--accent-green); }
 .export-item-btn:hover { background: rgba(16, 185, 129, 0.15); }
+.follow-btn { border-color: #f59e0b; color: #f59e0b; }
+.follow-btn:hover { background: rgba(245, 158, 11, 0.15); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2); }
+.follow-btn.active { border-color: #ef4444; color: #ef4444; background: rgba(239, 68, 68, 0.1); }
 .fp-btn { border-color: var(--border-color); color: var(--text-dim); }
 .fp-btn:hover { border-color: var(--accent-red); color: var(--accent-red); background: rgba(239, 68, 68, 0.15); box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
 .translate-btn { border-color: #8b5cf6; color: #8b5cf6; }
@@ -2957,6 +3636,185 @@ ensureSubscriptionSelection();
 .modal-btn.btn-warning { background: var(--accent-orange); }
 .modal-btn.btn-warning:hover { background: #ea580c; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); }
 
+.cfg3-mode-modal {
+  width: 980px;
+  max-width: 94%;
+}
+.cfg3-mode-modal-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cfg3-mode-tip {
+  border-left: 3px solid #60a5fa;
+  border-radius: 8px;
+  background: rgba(30, 64, 175, 0.18);
+  color: #cbd5e1;
+  line-height: 1.6;
+  font-size: 14px;
+  padding: 12px;
+}
+.cfg3-mode-preview-title {
+  color: #dbeafe;
+  font-size: 22px;
+  font-weight: 700;
+}
+.cfg3-mode-json {
+  margin-bottom: 0;
+  max-height: 360px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.cfg3-mode-desc {
+  color: #94a3b8;
+  font-size: 14px;
+}
+.cfg3-mode-footer {
+  justify-content: flex-end;
+}
+
+.cfg3-dict-modal {
+  width: 1460px;
+  max-width: 95vw;
+}
+.cfg3-dict-header {
+  padding: 18px 24px;
+}
+.cfg3-dict-body {
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  min-height: 560px;
+  overflow: hidden;
+}
+.cfg3-dict-side {
+  border-right: 1px solid rgba(71, 93, 132, 0.35);
+  background: rgba(9, 18, 36, 0.86);
+  padding: 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cfg3-dict-cat {
+  border: none;
+  background: transparent;
+  color: #93a8c7;
+  height: 64px;
+  padding: 0 18px 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.cfg3-dict-cat b {
+  border: 1px solid rgba(59, 130, 246, 0.7);
+  border-radius: 10px;
+  min-width: 40px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #60a5fa;
+  font-weight: 600;
+}
+.cfg3-dict-cat:hover {
+  color: #e2e8f0;
+  background: rgba(30, 58, 138, 0.12);
+}
+.cfg3-dict-cat.active {
+  color: #dbeafe;
+  border-left-color: #60a5fa;
+  background: rgba(30, 64, 175, 0.24);
+}
+.cfg3-dict-main {
+  padding: 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+}
+.cfg3-dict-search {
+  width: 100%;
+  height: 56px;
+  border-radius: 8px;
+  border: 1px solid rgba(71, 93, 132, 0.72);
+  background: rgba(30, 41, 59, 0.82);
+  color: #dbeafe;
+  font-size: 14px;
+  padding: 0 16px;
+}
+.cfg3-dict-search:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+.cfg3-dict-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.cfg3-dict-card {
+  border: 1px solid rgba(71, 93, 132, 0.45);
+  border-radius: 10px;
+  background: rgba(12, 23, 44, 0.75);
+  min-height: 118px;
+  display: grid;
+  grid-template-columns: 70px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.cfg3-dict-card:hover {
+  border-color: rgba(96, 165, 250, 0.75);
+  background: rgba(17, 33, 63, 0.8);
+}
+.cfg3-dict-card.selected {
+  border-color: rgba(96, 165, 250, 0.85);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.25);
+}
+.cfg3-dict-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ecfdf5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+.cfg3-dict-name {
+  color: #f8fafc;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.cfg3-dict-sub {
+  margin-top: 4px;
+  color: #8ea5c4;
+  font-size: 12px;
+}
+.cfg3-dict-check {
+  color: #475569;
+  font-size: 26px;
+}
+.cfg3-dict-card.selected .cfg3-dict-check {
+  color: #60a5fa;
+}
+.cfg3-dict-footer {
+  padding: 18px 24px;
+}
+.cfg3-dict-selected {
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 @media (max-width: 1380px) {
   .summary-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .follow-list, .topic-list-grid { grid-template-columns: 1fr; }
@@ -2984,5 +3842,20 @@ ensureSubscriptionSelection();
   .monitor-row { grid-template-columns: 1fr; }
   .monitor-side { min-width: 0; align-items: flex-start; }
   .topic-meta-grid { grid-template-columns: 1fr; }
+  .cfg3-ast-condition-row { grid-template-columns: 1fr; }
+  .cfg3-ast-mini-btn { width: 100%; justify-content: center; }
+  .cfg3-ast-mark,
+  .cfg3-ast-del { width: 100%; height: 42px; }
+  .cfg3-dict-body { grid-template-columns: 1fr; min-height: auto; }
+  .cfg3-dict-side { border-right: none; border-bottom: 1px solid rgba(71, 93, 132, 0.35); }
+  .cfg3-dict-grid { grid-template-columns: 1fr; }
+  .cfg3-dict-search { font-size: 14px; height: 42px; }
+  .cfg3-dict-cat { font-size: 14px; height: 46px; }
+  .cfg3-dict-cat b { font-size: 12px; height: 24px; min-width: 28px; }
+  .cfg3-dict-name { font-size: 16px; }
+  .cfg3-dict-sub { font-size: 12px; }
+  .cfg3-dict-selected { font-size: 16px; }
+  .cfg3-mode-preview-title { font-size: 18px; }
+  .cfg3-mode-json { font-size: 12px; }
 }
 </style>
