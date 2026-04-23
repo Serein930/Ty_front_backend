@@ -301,12 +301,41 @@
                   <div class="ai-header-title"><i class="fa-solid fa-book-bookmark"></i> 检索参考源（Reference）</div>
                   <div class="ai-header-actions">
                     <span class="ai-header-badge">{{ finalFiltered.length }} 条</span>
+                    <span class="ai-header-badge">{{ state.aiSources.length }} 条</span>
                     <button class="ai-header-expand-btn" @click.stop="toggleAiRightFullscreen" :title="state.aiFullscreenTarget === 'right' ? '恢复双栏' : '展开右侧参考源'">
                       <i class="fa-solid" :class="state.aiFullscreenTarget === 'right' ? 'fa-compress' : 'fa-expand'"></i>
                     </button>
                   </div>
                 </div>
-                <div v-if="finalFiltered.length === 0" class="empty-block">暂无参考源</div>
+                <div v-if="state.aiLoading" class="ai-loading-indicator">
+                  <i class="fa-solid fa-circle-notch fa-spin"></i> 正在检索...
+                </div>
+                <div v-else-if="state.aiSources.length > 0" class="ref-list custom-scrollbar">
+                  <!-- AI 参考源列表 -->
+                  <div class="ai-sources-list">
+                    <div
+                      v-for="source in state.aiSources"
+                      :key="source.id"
+                      class="ai-source-item"
+                      @click="openDetail(source)"
+                    >
+                      <div class="ai-source-header">
+                        <span class="ai-source-type" :class="source.viewType">
+                          {{ source.viewType === 'intel' ? '情报' : source.viewType === 'person' ? '人物' : '账号' }}
+                        </span>
+                        <span class="ai-source-score" v-if="source.score">相关度: {{ (source.score * 100).toFixed(1) }}%</span>
+                      </div>
+                      <div class="ai-source-title">{{ source.title }}</div>
+                      <div class="ai-source-summary">{{ source.summary.substring(0, 80) }}...</div>
+                      <div class="ai-source-meta">
+                        <span :class="['risk-tag', riskClass(source.risk)]">{{ source.risk }}</span>
+                        <span class="source-media"><i :class="getMediaIcon(source.media)"></i> {{ source.media }}</span>
+                        <span class="source-region">{{ source.region }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-else-if="finalFiltered.length === 0" class="empty-block">暂无参考源</div>
                 <div v-else class="ref-list custom-scrollbar">
                   <section v-for="group in aiReferenceGroups" :key="`ai-${group.type}`" class="ai-ref-group">
                     <h4 class="ai-ref-group-title">{{ group.label }} ({{ group.items.length }})</h4>
@@ -552,7 +581,10 @@
           <div v-else class="right-scroll-section custom-scrollbar">
             <div class="basket-actions">
               <button class="btn btn-small" @click="clearBasket">清空</button>
-              <button class="btn btn-ai btn-small" @click="analyzeBasket">基于已选证据研判</button>
+              <button class="btn btn-ai btn-small" @click="analyzeBasketWithAI" :disabled="state.aiLoading">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                {{ state.aiLoading ? '分析中...' : '基于已选证据研判' }}
+              </button>
             </div>
 
             <div v-if="basketItems.length === 0" class="empty-block">暂无已选线索</div>
@@ -834,7 +866,11 @@ const state = reactive({
   basketIds: [], groupTab: 'all', analysisTime: '7d', selectedRule: 'all',
   aiLeftCollapsed: false, aiRightCollapsed: false, aiOutputHtml: '', followUpInput: '',
   aiFullscreenTarget: null,
-  detailOpen: false, detailItem: null
+  detailOpen: false, detailItem: null,
+  // AI 搜索相关状态
+  aiSessionId: null,
+  aiLoading: false,
+  aiSources: []
 });
 
 const aiOutputRef = ref(null);
@@ -862,6 +898,59 @@ const fetchSearchResults = async (keyword = '') => {
     apiData.value = [];
   } finally {
     loading.value = false;
+  }
+};
+
+// ================== AI RAG 搜索 API 调用 ==================
+
+// 生成唯一会话 ID
+const generateSessionId = () => {
+  return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+};
+
+// RAG 智能搜索
+const fetchRAGSearch = async (question, sessionId, useRerank = false) => {
+  try {
+    const response = await fetch('/api/rag/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        session_id: sessionId,
+        use_rerank: useRerank
+      })
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
+  } catch (e) {
+    console.error('RAG 搜索失败:', e);
+    throw e;
+  }
+};
+
+// 获取对话历史
+const fetchRAGHistory = async (sessionId) => {
+  try {
+    const response = await fetch(`/api/rag/history/${sessionId}`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
+  } catch (e) {
+    console.error('获取历史失败:', e);
+    return null;
+  }
+};
+
+// 清除对话历史
+const clearRAGHistory = async (sessionId) => {
+  try {
+    const response = await fetch(`/api/rag/history/${sessionId}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
+  } catch (e) {
+    console.error('清除历史失败:', e);
+    throw e;
   }
 };
 
@@ -1156,25 +1245,67 @@ const applyRuleFilterFromRank = (ruleName) => {
 };
 
 const submitSearch = async (mode) => {
+  const isNewKeyword = state.submittedKeyword !== state.inputKeyword.trim();
   state.submittedKeyword = state.inputKeyword.trim();
   state.mode = mode === 'ai' ? 'ai' : 'normal';
   state.hasSubmitted = true;
   if (!visibleGroupTabs.value.some((x) => x.type === state.groupTab)) state.groupTab = 'all';
-  await fetchSearchResults(state.submittedKeyword);
+
   if (state.mode === 'ai') {
     state.aiLeftCollapsed = false;
     state.aiRightCollapsed = false;
     state.aiFullscreenTarget = null;
-    makeAiReport();
+    state.aiLoading = true;
+
+    // 【修复 1：彻底重置会话状态】
+    // 只要是从顶部搜索框触发的请求，一律作为新会话处理
+    if (state.aiSessionId) {
+      // 异步通知后端清理旧历史，释放内存，不需要 await 阻塞前端
+      clearRAGHistory(state.aiSessionId).catch(e => console.error('清理历史失败:', e));
+    }
+    
+    // 清空前端上下文与输出
+    state.aiOutputHtml = '';
+    state.aiSources = [];
+    state.followUpInput = '';
+    
+    // 生成全新的会话 ID，切断上下文关联
+    state.aiSessionId = generateSessionId();
+
+    try {
+      const result = await fetchRAGSearch(state.submittedKeyword, state.aiSessionId, false);
+      state.aiSources = formatAISources(result.sources);
+
+      const htmlContent = markdownToHtml(result.answer);
+      typeWriteHtml(htmlContent); // 此时 append 默认为 false
+    } catch (e) {
+      state.aiOutputHtml = `<div class="ai-error">搜索失败: ${e.message}</div>`;
+    } finally {
+      state.aiLoading = false;
+    }
+  } else {
+    // 普通模式
+    await fetchSearchResults(state.submittedKeyword);
   }
 };
 
-const resetAll = () => {
+const resetAll = async () => {
+  // 如果有 AI 会话，清除后端历史
+  if (state.aiSessionId) {
+    try {
+      await clearRAGHistory(state.aiSessionId);
+    } catch (e) {
+      console.error('清除后端历史失败:', e);
+    }
+  }
+
   state.mode = 'normal'; state.currentView = 'all'; state.inputKeyword = ''; state.submittedKeyword = '';
   state.quickTime = 'all'; state.region = 'all'; state.riskSet = []; state.mediaSet = []; state.topicSet = [];
   state.groupTab = 'all'; state.analysisTime = '7d'; state.selectedRule = 'all'; state.followUpInput = '';
   state.aiOutputHtml = ''; state.hasSubmitted = false;
   state.aiFullscreenTarget = null;
+  state.aiSessionId = null;
+  state.aiSources = [];
 };
 
 const toggleBasket = (item) => {
@@ -1187,7 +1318,7 @@ const clearBasket = () => { state.basketIds = []; };
 const analyzeBasket = () => {
   if (!basketItems.value.length) { window.alert('线索篮为空，请先勾选至少一条证据。'); return; }
   state.mode = 'ai';
-  makeAiReport(true);
+  analyzeBasketWithAI();
 };
 
 const drillDown = (keyword) => { state.inputKeyword = keyword; submitSearch('normal'); };
@@ -1209,6 +1340,8 @@ const closeDetail = () => { state.detailOpen = false; setTimeout(() => { state.d
 const showToast = (msg) => { window.alert(msg); };
 
 let typingTimer = null;
+
+// 打字机效果（纯文本）
 const typeWrite = (text) => {
   if (typingTimer) clearTimeout(typingTimer);
   state.aiOutputHtml = '<span class="cursor"></span>';
@@ -1222,6 +1355,94 @@ const typeWrite = (text) => {
     typingTimer = setTimeout(step, 18);
   };
   step();
+};
+
+// 打字机效果（HTML，追加模式）
+const typeWriteHtml = (html, append = false) => {
+  if (typingTimer) clearTimeout(typingTimer);
+
+  if (!append) {
+    state.aiOutputHtml = '';
+  }
+
+  // 【修复 2：锁定基准 HTML】
+  // 记录开始打字前的完整内容。移除末尾可能存在的旧光标。
+  const baseHtml = append ? state.aiOutputHtml.replace(/<span class="cursor"><\/span>$/, '') : '';
+
+  // 创建一个临时容器来解析 HTML
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
+  const textContent = tempDiv.textContent || tempDiv.innerText || '';
+
+  let i = 0;
+  const step = () => {
+    if (i >= textContent.length) {
+      // 完成后直接在基准 HTML 后拼接完整的结构化 HTML
+      state.aiOutputHtml = baseHtml + html;
+      return;
+    }
+
+    // 显示部分文本 + 光标
+    const partialText = textContent.substring(0, i + 1);
+    
+    // 每次都基于静态的 baseHtml 进行拼接，避免将 partialText 再次累加给自己
+    state.aiOutputHtml = baseHtml + partialText + '<span class="cursor"></span>';
+
+    i += 1;
+    nextTick(() => { 
+      if (aiOutputRef.value) aiOutputRef.value.scrollTop = aiOutputRef.value.scrollHeight; 
+    });
+    typingTimer = setTimeout(step, 12);
+  };
+  step();
+};
+
+// Markdown 转 HTML 简单实现
+const markdownToHtml = (markdown) => {
+  if (!markdown) return '';
+
+  let html = markdown
+    // 转义 HTML 特殊字符
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // 标题
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    // 粗体
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    // 斜体
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    // 引用
+    .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
+    // 无序列表
+    .replace(/^\- (.*$)/gim, '<ul><li>$1</li></ul>')
+    // 有序列表
+    .replace(/^\d+\. (.*$)/gim, '<ol><li>$1</li></ol>')
+    // 代码块
+    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+    // 行内代码
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // 链接
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    // 分隔线
+    .replace(/^\-\-\-+/gim, '<hr>')
+    // 换行
+    .replace(/\n/g, '<br>');
+
+  // 合并相邻的列表
+  html = html.replace(/<\/ul><ul>/g, '');
+  html = html.replace(/<\/ol><ol>/g, '');
+
+  return html;
+};
+
+// HTML 转义
+const escapeHtml = (text) => {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 };
 
 const makeAiReport = (fromBasket = false) => {
@@ -1241,12 +1462,115 @@ const makeAiReport = (fromBasket = false) => {
   typeWrite(lines.join('\n'));
 };
 
-const sendFollowUp = () => {
+// 将后端返回的参考源转换为前端显示格式
+const formatAISources = (sources) => {
+  if (!sources || !Array.isArray(sources)) return [];
+
+  let formatted = sources.map((source, index) => {
+    // 【修复 3：提取真实的检索相似度，而不是用情报的风险等级分数(risk_score)代替】
+    let relevance = 0;
+    if (source.rerank_score !== undefined) {
+      // Rerank 分数通常是 logit，用 sigmoid 映射到 0-1
+      relevance = 1 / (1 + Math.exp(-source.rerank_score));
+    } else if (source.distance !== undefined) {
+      // L2 distance 越小越好，映射到 0-1
+      relevance = 1 / (1 + source.distance);
+    } else {
+      relevance = 0.9 - (index * 0.05); // 兜底
+    }
+
+    return {
+      id: source.content_id || `ai-source-${index}`,
+      viewType: 'intel',
+      title: source.title || '未命名线索',
+      summary: source.text_preview || source.raw_content || '',
+      risk: source.risk_level || '中危',
+      media: source.platform || '跨平台聚合',
+      region: source.region || '未知',
+      topic: source.threat_category || '黑产',
+      date: source.publish_time ? new Date(source.publish_time * 1000).toISOString().slice(0, 10) : BASE_DATE.toISOString().slice(0, 10),
+      dayDiff: 0,
+      entities: source.entities_industry || [],
+      relatedAccounts: [],
+      score: relevance, // 绑定真实计算的相关度
+      avatar: '/offline/avatar-default.svg'
+    };
+  });
+
+  // 按真实相关度从高到低二次排序
+  formatted.sort((a, b) => b.score - a.score);
+  return formatted;
+};
+
+// 基于已选证据进行 AI 分析
+const analyzeBasketWithAI = async () => {
+  if (!basketItems.value.length) {
+    window.alert('线索篮为空，请先勾选至少一条证据。');
+    return;
+  }
+
+  state.mode = 'ai';
+  state.aiLoading = true;
+  state.aiLeftCollapsed = false;
+  state.aiRightCollapsed = false;
+  state.aiFullscreenTarget = null;
+
+  // 生成新的会话 ID
+  state.aiSessionId = generateSessionId();
+
+  // 构建分析提示
+  const basketSummary = basketItems.value.map(item =>
+    `[${item.viewType}] ${item.title}: ${item.summary}`
+  ).join('\n');
+
+  const analysisPrompt = `基于以下已选证据进行深度研判分析：\n\n${basketSummary}\n\n请提供综合分析报告，包括关联关系、风险等级评估和扩线建议。`;
+
+  try {
+    const result = await fetchRAGSearch(analysisPrompt, state.aiSessionId, false);
+    state.aiSources = formatAISources(result.sources);
+
+    const htmlContent = markdownToHtml(result.answer);
+    typeWriteHtml(htmlContent);
+  } catch (e) {
+    state.aiOutputHtml = `<div class="ai-error">AI 分析失败: ${e.message}</div>`;
+  } finally {
+    state.aiLoading = false;
+  }
+};
+
+const sendFollowUp = async () => {
   const q = state.followUpInput.trim();
   if (!q) return;
-  const answer = `\n\n追问：${q}\n答复：已根据当前过滤结果补充关联链路，建议优先处理高危 + 跨平台聚合样本。`;
-  state.followUpInput = '';
-  typeWrite((state.aiOutputHtml.replace(/<br>/g, '\n').replace(/<[^>]+>/g, '') + answer).trim());
+
+  state.aiLoading = true;
+
+  try {
+    // 追加显示用户的问题
+    const userQuestionHtml = `<div class="ai-user-question"><strong>追问：</strong>${escapeHtml(q)}</div>`;
+    state.aiOutputHtml += userQuestionHtml;
+    state.followUpInput = '';
+
+    // 【修复 1：追加 DOM 后立即触发滚动到底部】
+    nextTick(() => {
+      if (aiOutputRef.value) {
+        aiOutputRef.value.scrollTop = aiOutputRef.value.scrollHeight;
+      }
+    });
+
+    // 【修复 2：将 false 改为 true，开启 rerank 提升检索的语义匹配精度】
+    const result = await fetchRAGSearch(q, state.aiSessionId, true);
+    
+    // 使用 formatAISources 转换后端数据格式
+    state.aiSources = formatAISources(result.sources || []);
+
+    // 显示 AI 回答
+    const aiAnswerHtml = markdownToHtml(result.answer);
+    typeWriteHtml(aiAnswerHtml, true);
+  } catch (e) {
+    state.aiOutputHtml += `<div class="ai-error">追问失败: ${e.message}</div>`;
+  } finally {
+    state.aiLoading = false;
+  }
 };
 
 const toggleAiLeftFullscreen = () => {
@@ -2363,5 +2687,244 @@ watch(() => [state.currentView, state.quickTime, state.region, state.riskSet.len
     gap: 16px;
   }
   .person-card-head { grid-template-columns: auto 1fr; }
+}
+
+/* AI 搜索相关样式 */
+.ai-loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px;
+  color: #8b5cf6;
+  font-size: 14px;
+}
+
+.ai-error {
+  color: #ef4444;
+  padding: 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+.ai-user-question {
+  color: #60a5fa;
+  padding: 12px 16px;
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+  margin: 12px 0;
+  border-radius: 0 8px 8px 0;
+}
+
+.ai-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.ai-source-item {
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ai-source-item:hover {
+  border-color: #8b5cf6;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.2);
+}
+
+.ai-source-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.ai-source-type {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.ai-source-type.intel {
+  background: rgba(6, 182, 212, 0.2);
+  color: #67e8f9;
+}
+
+.ai-source-type.person {
+  background: rgba(139, 92, 246, 0.2);
+  color: #c4b5fd;
+}
+
+.ai-source-type.account {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.ai-source-score {
+  font-size: 11px;
+  color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.1);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.ai-source-title {
+  color: #f1f5f9;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.ai-source-summary {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.ai-source-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ai-source-meta .risk-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.ai-source-meta .risk-tag.high {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.ai-source-meta .risk-tag.mid {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.ai-source-meta .risk-tag.low {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.ai-source-meta .source-media {
+  color: #93c5fd;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-source-meta .source-region {
+  color: #64748b;
+  font-size: 11px;
+}
+
+/* AI 输出区域样式优化 */
+.ai-output h1,
+.ai-output h2,
+.ai-output h3 {
+  color: #c4b5fd;
+  margin: 16px 0 12px;
+}
+
+.ai-output h1 {
+  font-size: 20px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.3);
+  padding-bottom: 8px;
+}
+
+.ai-output h2 {
+  font-size: 17px;
+}
+
+.ai-output h3 {
+  font-size: 15px;
+}
+
+.ai-output strong {
+  color: #93c5fd;
+}
+
+.ai-output blockquote {
+  border-left: 3px solid #8b5cf6;
+  margin: 12px 0;
+  padding: 8px 16px;
+  background: rgba(139, 92, 246, 0.1);
+  border-radius: 0 8px 8px 0;
+}
+
+.ai-output code {
+  background: rgba(30, 41, 59, 0.8);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Fira Code', Consolas, monospace;
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.ai-output pre {
+  background: rgba(30, 41, 59, 0.9);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.ai-output pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.ai-output ul,
+.ai-output ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.ai-output li {
+  margin: 4px 0;
+}
+
+.ai-output hr {
+  border: none;
+  border-top: 1px solid rgba(139, 92, 246, 0.3);
+  margin: 16px 0;
+}
+
+.ai-output a {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.ai-output a:hover {
+  text-decoration: underline;
+}
+
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.2em;
+  background: #8b5cf6;
+  animation: blink 1s infinite;
+  vertical-align: middle;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
 </style>

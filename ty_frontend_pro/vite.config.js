@@ -13,6 +13,10 @@ export default defineConfig({
       '/api/search': {
         target: 'http://localhost:8888',
         changeOrigin: true
+      },
+      '/api/rag': {
+        target: 'http://localhost:8888',
+        changeOrigin: true
       }
     }
   }

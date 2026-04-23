@@ -59,8 +59,14 @@ class MilvusSettings:
         self.EMBEDDING_API_URL: str = os.getenv("EMBEDDING_API_URL", "http://172.23.216.104:5005/v1/embeddings")
         self.DIMENSION: int = int(os.getenv("EMBEDDING_DIMENSION", "4096"))
 
+class RerankSettings:
+    def __init__(self) -> None:
+        self.MODEL_PATH: str = os.getenv("RERANK_MODEL_PATH", "bge-reranker-v2-m3")
+
+
 
 ch_settings = ClickHouseSettings()
 llm_settings = LLMSettings()
 milvus_settings = MilvusSettings()
+rerank_settings = RerankSettings()
 
