@@ -104,7 +104,7 @@ class RAGSearchService:
     def _init_reranker(self):
         """初始化 Rerank 重排序模型"""
         self.reranker = None
-        use_rerank = os.getenv("USE_RERANK", "false").lower() == "true"
+        use_rerank = os.getenv("USE_RERANK", "true").lower() == "true"
         if use_rerank:
             try:
                 from FlagEmbedding import FlagReranker
