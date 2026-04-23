@@ -41,6 +41,7 @@ def get_search_counts(keyword: str) -> List[Dict[str, Any]]:
     """
 
     result = _execute_ch_sql(query)
+    print(f"[DEBUG] get_search_counts SQL: {query}")  # 添加调试日志
     rows = result.get("data", [])
     counts = [
         {"doc_type": row.get("doc_type", "unknown"), "total_count": int(row.get("total_count", 0))}
@@ -86,5 +87,6 @@ def get_search_results(keyword: str, doc_type: str = "All", limit: int = 20, off
     print(f"[DEBUG] SQL Query: {query}")  # 添加调试日志
 
     result = _execute_ch_sql(query)
+    print(f"[DEBUG] Result rows count: {len(result.get('data', []))}")  # 添加调试日志
     items = result.get("data", [])
     return items
