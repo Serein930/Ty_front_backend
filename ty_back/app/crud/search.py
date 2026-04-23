@@ -33,10 +33,10 @@ def get_search_counts(keyword: str) -> List[Dict[str, Any]]:
         SELECT 
             doc_type, 
             count(1) AS total_count
-        FROM hawkeye.hawkeye_ads_search_unified_latest
+        FROM hawkeye_test.hawkeye_ads_search_unified_latest
         WHERE 
             doc_id != '' 
-            AND search_title_text LIKE '%{kw}%'
+            AND text_preview LIKE '%{kw}%'
         GROUP BY doc_type
     """
 
@@ -53,7 +53,7 @@ def get_search_results(keyword: str, doc_type: str = "All", limit: int = 20, off
     """获取分页详情列表"""
     kw = _escape_like(keyword.lower())
 
-    where_clauses = ["A.doc_id != ''", f"A.search_title_text LIKE '%{kw}%'"]
+    where_clauses = ["A.doc_id != ''", f"(A.text_preview LIKE '%{kw}%' OR ifNull(A.text_preview, '') LIKE '%{kw}%')"]
     if doc_type and doc_type != "All":
         where_clauses.append(f"A.doc_type = '{_escape_like(doc_type)}'")
 
@@ -73,15 +73,17 @@ def get_search_results(keyword: str, doc_type: str = "All", limit: int = 20, off
             dateDiff('day', A.event_date, today()) AS dayDiff,
             arrayDistinct(arrayConcat(ifNull(B.entity_tags, []), [A.topic, A.platform])) AS entities,
             arrayFilter(x -> x != '', [A.primary_handle, ifNull(B.source_handle, '')]) AS relatedAccounts
-        FROM hawkeye.hawkeye_ads_search_unified_latest AS A
+        FROM hawkeye_test.hawkeye_ads_search_unified_latest AS A
         LEFT JOIN (
             SELECT content_id, entity_tags, source_handle 
-            FROM hawkeye.hawkeye_ads_case_content_latest
+            FROM hawkeye_test.hawkeye_ads_case_content_latest
         ) AS B ON A.doc_id = B.content_id
         {where_str}
         ORDER BY A.event_time DESC
         LIMIT {int(limit)} OFFSET {int(offset)}
     """
+    
+    print(f"[DEBUG] SQL Query: {query}")  # 添加调试日志
 
     result = _execute_ch_sql(query)
     items = result.get("data", [])

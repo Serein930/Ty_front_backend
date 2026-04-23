@@ -1209,6 +1209,20 @@ const loadScript = (src) => {
   });
 };
 
+const syncMapFromWindowEcharts = (mapName) => {
+  if (!mapName || echarts.getMap(mapName)) return;
+  const winEcharts = window.echarts;
+  if (!winEcharts || typeof winEcharts.getMap !== 'function') return;
+
+  const mapRecord = winEcharts.getMap(mapName);
+  if (!mapRecord) return;
+
+  const geoJSON = mapRecord.geoJSON || mapRecord.geoJson;
+  if (!geoJSON) return;
+
+  echarts.registerMap(mapName, geoJSON, mapRecord.specialAreas || {});
+};
+
 const updateNowTime = () => {
   const now = new Date();
   const y = now.getFullYear();
@@ -1280,6 +1294,7 @@ const buildTrendOption = () => {
 
 const buildMapOption = () => {
   const name = mapMode.value === 'china' ? 'china' : 'world';
+  syncMapFromWindowEcharts(name);
   const sceneColorMap = {
     global: '#8b5cf6',
     black: '#22d3ee',
@@ -1311,11 +1326,16 @@ const buildMapOption = () => {
     geo: {
       map: name,
       roam: true,
-      zoom: mapMode.value === 'china' ? 1.2 : 1,
+      zoom: mapMode.value === 'china' ? 1.08 : 1,
+      center: mapMode.value === 'china' ? [104, 35.5] : [12, 25],
+      layoutCenter: ['50%', '54%'],
+      layoutSize: mapMode.value === 'china' ? '125%' : '118%',
+      scaleLimit: { min: 0.9, max: 5 },
       label: { show: false, color: '#94a3b8' },
       itemStyle: {
         areaColor: '#10213f',
-        borderColor: '#2d4d80'
+        borderColor: '#2d4d80',
+        borderWidth: 1
       },
       emphasis: {
         label: { show: false },
@@ -1335,9 +1355,9 @@ const buildMapOption = () => {
           symbolSize: 6
         },
         lineStyle: {
-          width: 1.4,
-          opacity: 0.7,
-          curveness: 0.3,
+          width: 2,
+          opacity: 0.78,
+          curveness: 0.28,
           color: lineColor
         },
         data: [
@@ -1353,7 +1373,14 @@ const buildMapOption = () => {
         data: points,
         symbolSize: (val) => Math.max(8, Math.round(val[2] / 10)),
         rippleEffect: { brushType: 'stroke' },
-        itemStyle: { color: lineColor }
+        itemStyle: { color: lineColor },
+        label: {
+          show: true,
+          position: 'right',
+          color: '#dbeafe',
+          fontSize: 11,
+          formatter: '{b}'
+        }
       }
     ]
   };
@@ -1367,6 +1394,12 @@ const updateTrendChart = () => {
 const updateMapChart = () => {
   if (!mapChart.value) return;
   try {
+    const currentMap = mapMode.value === 'china' ? 'china' : 'world';
+    syncMapFromWindowEcharts(currentMap);
+    if (!echarts.getMap(currentMap)) {
+      mapFallback.value = true;
+      return;
+    }
     mapChart.value.setOption(buildMapOption(), true);
     mapFallback.value = false;
   } catch {
@@ -1426,6 +1459,8 @@ onMounted(async () => {
   try {
     await loadScript('https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js');
     await loadScript('https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/china.js');
+    syncMapFromWindowEcharts('world');
+    syncMapFromWindowEcharts('china');
   } catch {
     mapFallback.value = true;
     showToast('地图底图资源加载失败，已降级显示。');
@@ -2203,11 +2238,19 @@ select {
 .entity-stat.warning { color: var(--accent-orange); }
 
 #mapChart {
+  position: relative;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 25px);
   flex: 1;
   min-height: 0;
   margin-top: 25px;
+  border: 1px solid rgba(55, 108, 179, 0.45);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 70% 30%, rgba(37, 99, 235, 0.1) 0%, transparent 42%),
+    radial-gradient(circle at 25% 60%, rgba(14, 165, 233, 0.08) 0%, transparent 40%),
+    linear-gradient(180deg, #08152f 0%, #061025 100%);
+  overflow: hidden;
 }
 
 .map-fallback {

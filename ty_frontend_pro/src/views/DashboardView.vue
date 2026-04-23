@@ -18,14 +18,6 @@
       </div>
 
       <main class="content-area">
-        <div class="module-header-strip">
-          <div class="module-title-wrap">
-            <div class="module-main-title">{{ activeModuleMeta.title }}</div>
-            <div class="module-main-subtitle">{{ activeModuleMeta.subtitle }}</div>
-          </div>
-          <div class="module-main-count">{{ activeModuleMeta.countText }}</div>
-        </div>
-
         <template v-if="state.activeModule === 'alerts'">
         <div class="filter-panel" :class="{ 'collapsed': state.isFilterCollapsed }">
           <div class="tech-corner-tl"></div><div class="tech-corner-tr"></div>
@@ -504,11 +496,12 @@
                     <div class="cfg3-form-grid">
                       <div class="cfg3-field">
                         <label><i class="fa-solid fa-triangle-exclamation"></i> 最低接收危害等级</label>
-                        <select v-model="subscriptionEditor.minSeverity" class="sub-select">
-                          <option value="CRITICAL">CRITICAL</option>
-                          <option value="HIGH">HIGH</option>
-                          <option value="MEDIUM">MEDIUM</option>
-                          <option value="LOW">LOW</option>
+                        <select v-model="subscriptionEditor.minSeverity" class="sub-select cfg3-severity-select">
+                          <option value="ALL">全部接收 (All)</option>
+                          <option value="LOW">低危及以上 (&gt;= Low)</option>
+                          <option value="MEDIUM">中危及以上 (&gt;= Medium)</option>
+                          <option value="HIGH">高危及以上 (&gt;= High)</option>
+                          <option value="CRITICAL">致命及以上 (&gt;= Critical)</option>
                         </select>
                       </div>
                       <div class="cfg3-field">
@@ -526,7 +519,10 @@
                         <input v-model="subscriptionEditor.regionFocus" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
                       </div>
                       <div class="cfg3-field">
-                        <label><i class="fa-solid fa-tags"></i> 业务标签关注 (智能适配专题)</label>
+                        <label class="cfg3-label-with-action">
+                          <span><i class="fa-solid fa-tags"></i> 业务标签关注 (智能适配专题)</span>
+                          <button class="cfg3-dict-trigger" @click="openLabelDictModal"><i class="fa-solid fa-list-check"></i> 字典</button>
+                        </label>
                         <input v-model="subscriptionEditor.bizTagFocus" class="sub-input" placeholder="输入回车，或直接粘贴带逗号的整段文本">
                       </div>
                     </div>
@@ -538,7 +534,7 @@
                       <div class="cfg3-ast-helper" style="margin-top: 0; margin-bottom: 12px;">
                         <span class="cfg3-ast-chip">逻辑运算：AND 且 / OR 或 / NOT 非</span>
                         <span class="cfg3-ast-chip">能力：条件、子组、嵌套组合</span>
-                        <span class="cfg3-ast-chip">提示：NOT 非组代表“子条件均不满足”</span>
+                        <span class="cfg3-ast-chip">NOT 非组代表“子条件均不满足”</span>
                       </div>
 
                       <div class="cfg3-ast-tree">
@@ -546,9 +542,9 @@
                           v-for="row in astGroupRows"
                           :key="row.group.id"
                           class="cfg3-ast-group-row"
-                          :style="{ marginLeft: `${row.level * 20}px` }">
+                          :style="{ marginLeft: `${row.level * 12}px` }">
                           <div class="cfg3-ast-group-head">
-                            <select v-model="row.group.op" class="sub-select cfg3-ast-op-select">
+                            <select v-model="row.group.op" class="sub-select cfg3-ast-op-select" :class="{ 'is-not': row.group.op === 'NOT' }">
                               <option value="AND">AND 且</option>
                               <option value="OR">OR 或</option>
                               <option value="NOT">NOT 非</option>
@@ -574,7 +570,6 @@
                                 class="sub-input cfg3-ast-value-input"
                                 :placeholder="getAstValuePlaceholder(cond.field, cond.operator)">
                               <div v-else class="cfg3-ast-unary-tip">无需输入值</div>
-                              <button class="cfg3-ast-mark" title="条件标记（展示）" @click.prevent><i class="fa-solid fa-list-check"></i></button>
                               <button class="cfg3-ast-del" title="删除条件" @click="removeAstCondition(row.group.id, cond.id)"><i class="fa-solid fa-xmark"></i></button>
                             </div>
                           </div>
@@ -769,7 +764,6 @@
                     <span>最近执行：{{ topic.lastRun }}</span>
                   </div>
                   <div class="topic-actions">
-                    <button class="chip-btn" @click.stop="alertMock(`已复制专题：${topic.name}`)">复制</button>
                     <button class="chip-btn" @click.stop="alertMock(`已打开专题配置：${topic.name}`)">配置</button>
                     <button class="chip-btn primary" @click.stop="toggleTopicStatus(topic)">{{ topic.status === '运行中' ? '暂停' : '启动' }}</button>
                   </div>
@@ -892,6 +886,58 @@
       </div>
     </div>
 
+    <div class="modal-overlay" :class="{ open: labelDictState.open }" @click.self="closeLabelDictModal">
+      <div class="modal-box cfg3-dict-modal is-label" v-if="labelDictState.open">
+        <div class="modal-header cfg3-dict-header">
+          <div class="modal-title"><i class="fa-solid fa-tags"></i> 分析标签库 (自动适配当前所选专题)</div>
+          <div class="modal-close" @click="closeLabelDictModal"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+        <div class="modal-body cfg3-dict-body">
+          <aside class="cfg3-dict-side">
+            <button
+              v-for="cat in labelDictCategories"
+              :key="cat.id"
+              class="cfg3-dict-cat"
+              :class="{ active: labelDictState.category === cat.id }"
+              @click="labelDictState.category = cat.id">
+              <span>{{ cat.name }}</span>
+              <b>{{ cat.count }}</b>
+            </button>
+          </aside>
+
+          <section class="cfg3-dict-main">
+            <input
+              v-model="labelDictState.keyword"
+              class="cfg3-dict-search"
+              placeholder="支持跨分类全局搜索...">
+
+            <div class="cfg3-dict-grid">
+              <button
+                v-for="item in labelDictVisibleItems"
+                :key="item.id"
+                class="cfg3-dict-card"
+                :class="{ selected: labelDictSelectedSet.has(item.id) }"
+                @click="toggleLabelDictItem(item.id)">
+                <div class="cfg3-dict-icon cfg3-dict-icon-label"><i class="fa-solid fa-tag"></i></div>
+                <div class="cfg3-dict-meta">
+                  <div class="cfg3-dict-name">{{ item.name }}</div>
+                  <div class="cfg3-dict-sub">{{ item.desc }} · {{ item.categoryName }}</div>
+                </div>
+                <div class="cfg3-dict-check"><i class="fa-solid" :class="labelDictSelectedSet.has(item.id) ? 'fa-circle-check' : 'fa-circle' "></i></div>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div class="modal-footer cfg3-dict-footer">
+          <span class="cfg3-dict-selected">已选：{{ labelDictState.selectedIds.length }} 项</span>
+          <div style="flex: 1;"></div>
+          <button class="modal-btn btn-tool" @click="closeLabelDictModal">取消</button>
+          <button class="modal-btn btn-primary" @click="applyLabelDictSelection">确认使用</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -977,7 +1023,7 @@ const subscriptionRules = ref([
     astTree: {
       id: 'group-seed-root',
       op: 'AND',
-      conditions: [{ id: 'cond-seed-1', field: 'threat_category', operator: 'in', value: 'TopicDrugs,TopicSmuggle' }],
+      conditions: [{ id: 'cond-seed-1', field: 'threat_category', operator: 'in', value: '' }],
       groups: []
     },
     updatedAt: toDateTimeString(new Date())
@@ -1106,6 +1152,19 @@ const REGION_DICT_LIBRARY = [
   { id: 'jsj', name: '金三角', province: '金三角', category: 'overseas', categoryName: '境外监控区' }
 ];
 
+const BIZ_LABEL_DICT_LIBRARY = [
+  { id: 'lbl-drug-trade', name: '大宗交易', desc: '大宗交易', category: 'drug', categoryName: '涉毒专属', topics: ['TopicDrugs'] },
+  { id: 'lbl-drug-sell', name: '贩毒', desc: '贩毒', category: 'drug', categoryName: '涉毒专属', topics: ['TopicDrugs'] },
+  { id: 'lbl-drug-guarantee', name: '暗网担保', desc: '暗网担保', category: 'drug', categoryName: '涉毒专属', topics: ['TopicDrugs'] },
+  { id: 'lbl-drug-new', name: '新型毒品', desc: '新型毒品', category: 'drug', categoryName: '涉毒专属', topics: ['TopicDrugs'] },
+  { id: 'lbl-smuggle-water', name: '水客带货', desc: '水客带货', category: 'smuggle', categoryName: '走私专属', topics: ['TopicSmuggle'] },
+  { id: 'lbl-smuggle-fly', name: '飞缆走私', desc: '飞缆走私', category: 'smuggle', categoryName: '走私专属', topics: ['TopicSmuggle'] },
+  { id: 'lbl-common-fraud', name: '诈骗引流', desc: '诈骗引流', category: 'common', categoryName: '通用标签', topics: ['common'] },
+  { id: 'lbl-common-split', name: '分销网络', desc: '分销网络', category: 'common', categoryName: '通用标签', topics: ['common'] },
+  { id: 'lbl-common-launder', name: '洗钱通道', desc: '洗钱通道', category: 'common', categoryName: '通用标签', topics: ['common'] },
+  { id: 'lbl-common-coin', name: '虚假庄传', desc: '虚假庄传', category: 'common', categoryName: '通用标签', topics: ['common'] }
+];
+
 const regionDictState = reactive({
   open: false,
   category: 'all',
@@ -1113,7 +1172,21 @@ const regionDictState = reactive({
   selectedIds: []
 });
 
+const labelDictState = reactive({
+  open: false,
+  category: 'all',
+  keyword: '',
+  selectedIds: []
+});
+
 const regionDictSelectedSet = computed(() => new Set(regionDictState.selectedIds));
+const labelDictSelectedSet = computed(() => new Set(labelDictState.selectedIds));
+
+const adaptedLabelDictItems = computed(() => {
+  const selectedTopics = subscriptionEditor.topics || [];
+  if (!selectedTopics.length) return BIZ_LABEL_DICT_LIBRARY;
+  return BIZ_LABEL_DICT_LIBRARY.filter((item) => item.topics.includes('common') || item.topics.some((topic) => selectedTopics.includes(topic)));
+});
 
 const regionDictCategories = computed(() => {
   const domesticCount = REGION_DICT_LIBRARY.filter(item => item.category === 'domestic').length;
@@ -1136,12 +1209,44 @@ const regionDictVisibleItems = computed(() => {
   });
 });
 
+const labelDictCategories = computed(() => {
+  const source = adaptedLabelDictItems.value;
+  const drugCount = source.filter(item => item.category === 'drug').length;
+  const smuggleCount = source.filter(item => item.category === 'smuggle').length;
+  const commonCount = source.filter(item => item.category === 'common').length;
+  return [
+    { id: 'all', name: '全部分类', count: source.length },
+    { id: 'drug', name: '涉毒专属', count: drugCount },
+    { id: 'smuggle', name: '走私专属', count: smuggleCount },
+    { id: 'common', name: '通用标签', count: commonCount }
+  ];
+});
+
+const labelDictVisibleItems = computed(() => {
+  const keyword = (labelDictState.keyword || '').trim().toLowerCase();
+  return adaptedLabelDictItems.value.filter((item) => {
+    const hitCategory = labelDictState.category === 'all' || item.category === labelDictState.category;
+    if (!hitCategory) return false;
+    if (!keyword) return true;
+    const text = `${item.name} ${item.desc} ${item.categoryName}`.toLowerCase();
+    return text.includes(keyword);
+  });
+});
+
 const toggleRegionDictItem = (itemId) => {
   if (regionDictSelectedSet.value.has(itemId)) {
     regionDictState.selectedIds = regionDictState.selectedIds.filter(id => id !== itemId);
     return;
   }
   regionDictState.selectedIds = [...regionDictState.selectedIds, itemId];
+};
+
+const toggleLabelDictItem = (itemId) => {
+  if (labelDictSelectedSet.value.has(itemId)) {
+    labelDictState.selectedIds = labelDictState.selectedIds.filter(id => id !== itemId);
+    return;
+  }
+  labelDictState.selectedIds = [...labelDictState.selectedIds, itemId];
 };
 
 const openRegionDictModal = () => {
@@ -1166,6 +1271,28 @@ const applyRegionDictSelection = () => {
   closeRegionDictModal();
 };
 
+const openLabelDictModal = () => {
+  const tokens = splitValues(subscriptionEditor.bizTagFocus).map(item => item.toLowerCase());
+  labelDictState.selectedIds = adaptedLabelDictItems.value
+    .filter(item => tokens.some(token => token === item.name.toLowerCase()))
+    .map(item => item.id);
+  labelDictState.category = 'all';
+  labelDictState.keyword = '';
+  labelDictState.open = true;
+};
+
+const closeLabelDictModal = () => {
+  labelDictState.open = false;
+};
+
+const applyLabelDictSelection = () => {
+  const names = adaptedLabelDictItems.value
+    .filter(item => labelDictSelectedSet.value.has(item.id))
+    .map(item => item.name);
+  subscriptionEditor.bizTagFocus = names.join(',');
+  closeLabelDictModal();
+};
+
 // === 2. 集中化状态管理 (对应原版 APP_STATE) ===
 const state = reactive({
   activeModule: 'alerts',
@@ -1188,19 +1315,6 @@ const filters = reactive({
   time: '7days', risk: 'all', read: 'all', media: 'all', topic: 'all',
   rule: 'all', author: 'all', region: 'all', industry: 'all', entity: '',
   customStart: '', customEnd: ''
-});
-
-const activeModuleMeta = computed(() => {
-  if (state.activeModule === 'follow') {
-    return { title: '我的关注', subtitle: '从告警列表中手动关注的重点线索', countText: `${followedAlerts.value.length} 条关注线索` };
-  }
-  if (state.activeModule === 'subscription') {
-    return { title: '订阅监测', subtitle: '订阅路由与治理编排中枢', countText: `${subscriptionRules.value.length} 条订阅规则` };
-  }
-  if (state.activeModule === 'topicList') {
-    return { title: '专题列表', subtitle: '专题资产管理与快速配置入口', countText: `${topicList.value.length} 个专题` };
-  }
-  return { title: '告警信息', subtitle: '多源风险告警聚合研判中心', countText: `${filteredList.value.length} 条线索` };
 });
 
 const followedAlerts = computed(() => {
@@ -1442,7 +1556,7 @@ const subscriptionSandbox = computed(() => ({ ...subscriptionSandboxStats }));
 const sandboxInputText = ref('');
 const sandboxEvents = ref([]);
 
-const severityWeight = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+const severityWeight = { ALL: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
 const splitValues = (text = '') => String(text || '').split(/[，,|/\n]/).map(v => v.trim()).filter(Boolean);
 
 const normalizeAstTree = (input) => {
@@ -2149,10 +2263,10 @@ const syncSubscriptionEditor = () => {
   subscriptionEditor.rateLimit = Number(rule.rateLimit ?? 50);
   subscriptionEditor.overflowAction = rule.overflowAction || '静默丢弃';
   subscriptionEditor.internalUserIds = rule.internalUserIds || '';
-  subscriptionEditor.internalGroupIds = rule.internalGroupIds || 'g_riskOps';
+  subscriptionEditor.internalGroupIds = rule.internalGroupIds || '';
   subscriptionEditor.externalDashboard = rule.externalDashboard !== false;
   subscriptionEditor.webhookUrls = rule.webhookUrls || '';
-  subscriptionEditor.telegramIds = rule.telegramIds || '@ops_channel';
+  subscriptionEditor.telegramIds = rule.telegramIds || '';
   subscriptionEditor.priority = Number(rule.priority ?? 50);
   subscriptionEditor.note = rule.note || '';
   subscriptionEditor.astTree = normalizeAstTree(rule.astTree);
@@ -2452,20 +2566,6 @@ ensureSubscriptionSelection();
 .content-area { flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden; position: relative; }
 .content-body { display: flex; flex: 1; gap: 10px; overflow: hidden; position: relative; }
 .list-section { flex: 1; display: flex; flex-direction: column; min-width: 0; gap: 10px; }
-
-.module-header-strip {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: linear-gradient(90deg, rgba(59, 130, 246, 0.15), rgba(15, 23, 42, 0.85));
-  border: 1px solid rgba(59, 130, 246, 0.28);
-  padding: 10px 14px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-.module-main-title { color: #e2e8f0; font-size: 16px; font-weight: 700; }
-.module-main-subtitle { color: #8ea5c4; font-size: 12px; margin-top: 2px; }
-.module-main-count { color: #93c5fd; font-size: 12px; border: 1px solid rgba(59,130,246,.4); padding: 4px 10px; border-radius: 999px; }
 
 .board-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
 .summary-card {
@@ -2854,19 +2954,20 @@ ensureSubscriptionSelection();
 .cfg3-mode-switch button.active { color: #fff; background: linear-gradient(90deg, rgba(236,72,153,.75), rgba(59,130,246,.7)); }
 
 .cfg3-ast-box {
-  border: 1px solid rgba(71, 93, 132, 0.5);
-  border-radius: 8px;
-  background: rgba(14, 22, 40, 0.65);
-  padding: 12px;
+  border: 1px solid rgba(41, 77, 132, 0.72);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(9, 22, 48, 0.86), rgba(8, 18, 38, 0.9));
+  padding: 16px;
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08), 0 0 0 1px rgba(8, 31, 74, 0.25);
 }
 .cfg3-ast-textarea {
-  min-height: 120px;
+  min-height: 132px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.55;
 }
 .cfg3-ast-helper {
-  margin-top: 10px;
+  margin-bottom: 12px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -2874,139 +2975,152 @@ ensureSubscriptionSelection();
 .cfg3-ast-chip {
   border: 1px solid rgba(71, 93, 132, 0.6);
   border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 11px;
-  color: #9fb8da;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: #b7c6df;
   background: rgba(30, 41, 59, 0.5);
 }
 
 .cfg3-ast-tree {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  min-width: 0;
 }
 .cfg3-ast-group-row {
-  border: 1px solid rgba(41, 77, 132, 0.72);
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(9, 22, 48, 0.88), rgba(8, 18, 38, 0.88));
-  padding: 12px;
-  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(38, 77, 138, 0.75);
+  border-radius: 12px;
+  background: rgba(10, 22, 45, 0.85);
+  padding: 14px;
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08), 0 0 0 1px rgba(8, 31, 74, 0.25);
+  transition: border-color .2s ease, box-shadow .2s ease;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.cfg3-ast-group-row:focus-within {
+  border-color: rgba(59, 130, 246, 0.85);
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.1), 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 .cfg3-ast-group-head {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 12px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 .cfg3-ast-op-select {
-  width: 150px;
-  min-width: 150px;
+  width: 148px;
+  min-width: 148px;
+  max-width: 148px;
   height: 42px;
   border-radius: 8px;
-  border-color: rgba(59, 130, 246, 0.62);
-  color: #60a5fa;
+  border-color: rgba(78, 127, 255, 0.75);
+  color: #7da7ff;
   font-weight: 700;
   font-size: 14px;
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.2), rgba(30, 64, 175, 0.08));
-  box-shadow: inset 0 1px 0 rgba(147, 197, 253, 0.18);
+  background: linear-gradient(180deg, rgba(41, 87, 179, 0.22), rgba(17, 34, 68, 0.78));
+  box-shadow: inset 0 1px 0 rgba(147, 197, 253, 0.14);
+  padding: 0 12px;
+}
+.cfg3-ast-op-select.is-not {
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(127, 29, 29, 0.22);
 }
 .cfg3-ast-group-actions {
   display: flex;
   align-items: center;
-  gap: 9px;
-  flex-wrap: nowrap;
+  gap: 12px;
+  margin-left: 0;
+  flex-shrink: 0;
 }
 .cfg3-ast-mini-btn {
   height: 42px;
   border-radius: 8px;
   border: 1px solid rgba(74, 98, 141, 0.72);
-  background: rgba(13, 24, 44, 0.68);
-  color: #f1f5f9;
-  font-size: 14px;
-  font-weight: 500;
+  background: rgba(12, 24, 48, 0.74);
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1;
-  padding: 0 15px;
+  padding: 0 18px;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   cursor: pointer;
   white-space: nowrap;
+  transition: .2s;
 }
-.cfg3-ast-mini-btn i { font-size: 15px; }
+.cfg3-ast-mini-btn i { font-size: 16px; }
 .cfg3-ast-mini-btn:hover {
-  border-color: rgba(96, 165, 250, 0.78);
+  border-color: rgba(96, 165, 250, 0.85);
   color: #fff;
-  background: rgba(22, 37, 66, 0.82);
+  background: rgba(24, 44, 82, 0.84);
+}
+.cfg3-ast-mini-btn:active {
+  transform: translateY(1px);
 }
 .cfg3-ast-mini-btn.danger {
-  border-color: rgba(239, 68, 68, 0.5);
+  border-color: rgba(239, 68, 68, 0.45);
   color: #fecaca;
 }
 .cfg3-ast-condition-list {
   margin-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .cfg3-ast-condition-row {
   display: grid;
-  grid-template-columns: 340px 220px 1fr 56px 32px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .75fr) minmax(0, 1fr) 34px;
+  gap: 12px;
   align-items: center;
-  border: 1px solid rgba(38, 77, 138, 0.75);
+  border: 1px solid rgba(38, 77, 138, 0.58);
   border-radius: 10px;
-  background: rgba(10, 22, 45, 0.9);
-  padding: 12px;
+  background: rgba(10, 22, 45, 0.82);
+  padding: 10px;
+}
+.cfg3-ast-condition-row:focus-within {
+  border-color: rgba(59, 130, 246, 0.82);
 }
 .cfg3-ast-field-select,
 .cfg3-ast-opr-select,
 .cfg3-ast-value-input {
-  height: 48px;
+  height: 44px;
   border-radius: 8px;
   background: rgba(30, 41, 59, 0.78);
-  border: 1px solid rgba(71, 93, 132, 0.78);
+  border: 1px solid rgba(71, 93, 132, 0.62);
+  font-size: 14px;
+  min-width: 0;
 }
-.cfg3-ast-field-select { min-width: 180px; }
-.cfg3-ast-opr-select { min-width: 120px; }
-.cfg3-ast-value-input {
-  min-width: 200px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
+.cfg3-ast-field-select { min-width: 0; }
+.cfg3-ast-opr-select { min-width: 0; }
+.cfg3-ast-value-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .cfg3-ast-unary-tip {
-  height: 48px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 14px;
   border-radius: 8px;
-  border: 1px dashed rgba(71, 93, 132, 0.7);
+  border: 1px dashed rgba(71, 93, 132, 0.62);
   color: #8ea5c4;
-  font-size: 13px;
-}
-.cfg3-ast-mark {
-  width: 56px;
-  height: 48px;
-  border-radius: 8px;
-  border: 1px solid #3b82f6;
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
-  color: #eff6ff;
-  cursor: pointer;
-  font-size: 16px;
-}
-.cfg3-ast-mark:hover {
-  filter: brightness(1.05);
+  font-size: 14px;
 }
 .cfg3-ast-del {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
   color: #8ea5c4;
   cursor: pointer;
+  transition: .2s;
 }
 .cfg3-ast-del:hover {
   color: #fff;
-  border-color: rgba(100, 116, 139, 0.72);
+  border-color: rgba(100, 116, 139, 0.62);
   background: rgba(30, 41, 59, 0.75);
 }
 .cfg3-ast-empty-tip {
@@ -3017,6 +3131,11 @@ ensureSubscriptionSelection();
   font-size: 12px;
   line-height: 1.6;
   padding: 10px;
+}
+@media (max-width: 1520px) {
+  .cfg3-ast-condition-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1fr) 34px;
+  }
 }
 
 .cfg3-section-title { margin-top: 12px; margin-bottom: 8px; font-size: 13px; color: #93c5fd; display: flex; align-items: center; gap: 6px; }
@@ -3043,10 +3162,10 @@ ensureSubscriptionSelection();
 .cfg3-topic span { font-size: 14px; }
 .cfg3-topic.active { color: #86efac; border-color: rgba(16,185,129,.7); background: rgba(16,185,129,.14); }
 
-.cfg3-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.cfg3-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
 .cfg3-bottom-grid { margin-top: 10px; }
 .cfg3-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-.cfg3-field label { color: #9fb0c9; font-size: 12px; display: flex; gap: 6px; align-items: center; }
+.cfg3-field label { color: #9fb0c9; font-size: 13px; display: flex; gap: 6px; align-items: center; }
 .cfg3-label-with-action {
   justify-content: space-between;
   align-items: center;
@@ -3057,21 +3176,30 @@ ensureSubscriptionSelection();
   gap: 6px;
 }
 .cfg3-dict-trigger {
-  height: 30px;
+  height: 28px;
   border: 1px solid rgba(59, 130, 246, 0.58);
-  border-radius: 8px;
+  border-radius: 6px;
   background: rgba(30, 58, 138, 0.16);
   color: #dbeafe;
   font-size: 12px;
-  padding: 0 10px;
+  padding: 0 9px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
+  transition: .2s;
 }
 .cfg3-dict-trigger:hover {
   border-color: rgba(96, 165, 250, 0.92);
   background: rgba(30, 64, 175, 0.3);
+}
+.cfg3-severity-select {
+  height: 54px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  border-color: rgba(59, 130, 246, 0.72);
+  background: rgba(20, 35, 66, 0.88);
 }
 .cfg3-channel-box {
   margin-top: 8px;
@@ -3143,7 +3271,7 @@ ensureSubscriptionSelection();
 
 .sub-input, .sub-select {
   width: 100%;
-  height: 36px;
+  height: 40px;
   border-radius: 8px;
   border: 1px solid rgba(71, 93, 132, 0.6);
   background: rgba(15, 23, 41, 0.82);
@@ -3675,22 +3803,25 @@ ensureSubscriptionSelection();
 }
 
 .cfg3-dict-modal {
-  width: 1460px;
-  max-width: 95vw;
+  width: 980px;
+  max-width: 92vw;
+  border: 1px solid rgba(59, 130, 246, 0.8);
+  box-shadow: 0 0 40px rgba(59, 130, 246, 0.24);
 }
 .cfg3-dict-header {
-  padding: 18px 24px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
 }
 .cfg3-dict-body {
   display: grid;
-  grid-template-columns: 330px 1fr;
-  min-height: 560px;
+  grid-template-columns: 180px 1fr;
+  min-height: 430px;
   overflow: hidden;
 }
 .cfg3-dict-side {
   border-right: 1px solid rgba(71, 93, 132, 0.35);
   background: rgba(9, 18, 36, 0.86);
-  padding: 18px 0;
+  padding: 8px 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -3699,21 +3830,21 @@ ensureSubscriptionSelection();
   border: none;
   background: transparent;
   color: #93a8c7;
-  height: 64px;
-  padding: 0 18px 0 28px;
+  height: 44px;
+  padding: 0 14px 0 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   border-left: 3px solid transparent;
 }
 .cfg3-dict-cat b {
   border: 1px solid rgba(59, 130, 246, 0.7);
-  border-radius: 10px;
-  min-width: 40px;
-  height: 32px;
-  padding: 0 10px;
+  border-radius: 6px;
+  min-width: 30px;
+  height: 24px;
+  padding: 0 6px;
   font-size: 12px;
   display: inline-flex;
   align-items: center;
@@ -3731,21 +3862,21 @@ ensureSubscriptionSelection();
   background: rgba(30, 64, 175, 0.24);
 }
 .cfg3-dict-main {
-  padding: 18px 24px;
+  padding: 10px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   overflow: auto;
 }
 .cfg3-dict-search {
   width: 100%;
-  height: 56px;
-  border-radius: 8px;
+  height: 44px;
+  border-radius: 6px;
   border: 1px solid rgba(71, 93, 132, 0.72);
   background: rgba(30, 41, 59, 0.82);
   color: #dbeafe;
-  font-size: 14px;
-  padding: 0 16px;
+  font-size: 13px;
+  padding: 0 12px;
 }
 .cfg3-dict-search:focus {
   outline: none;
@@ -3754,65 +3885,75 @@ ensureSubscriptionSelection();
 .cfg3-dict-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 10px;
 }
 .cfg3-dict-card {
   border: 1px solid rgba(71, 93, 132, 0.45);
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(12, 23, 44, 0.75);
-  min-height: 118px;
+  min-height: 84px;
   display: grid;
-  grid-template-columns: 70px 1fr auto;
+  grid-template-columns: 44px 1fr auto;
   align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
+  gap: 10px;
+  padding: 10px 12px;
   text-align: left;
   cursor: pointer;
+  transition: .2s;
 }
 .cfg3-dict-card:hover {
   border-color: rgba(96, 165, 250, 0.75);
   background: rgba(17, 33, 63, 0.8);
+  transform: translateY(-1px);
 }
 .cfg3-dict-card.selected {
   border-color: rgba(96, 165, 250, 0.85);
   box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.25);
 }
 .cfg3-dict-icon {
-  width: 60px;
-  height: 60px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
   background: linear-gradient(135deg, #10b981, #059669);
   color: #ecfdf5;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 14px;
+}
+.cfg3-dict-icon-label {
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
 }
 .cfg3-dict-name {
   color: #f8fafc;
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.25;
 }
 .cfg3-dict-sub {
-  margin-top: 4px;
+  margin-top: 2px;
   color: #8ea5c4;
-  font-size: 12px;
+  font-size: 11px;
 }
 .cfg3-dict-check {
   color: #475569;
-  font-size: 26px;
+  font-size: 16px;
 }
 .cfg3-dict-card.selected .cfg3-dict-check {
   color: #60a5fa;
 }
 .cfg3-dict-footer {
-  padding: 18px 24px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255,255,255,.05);
 }
 .cfg3-dict-selected {
   color: #e2e8f0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+}
+
+.cfg3-dict-modal.is-label .cfg3-dict-header .modal-title i {
+  color: #a78bfa;
 }
 
 @media (max-width: 1380px) {
@@ -3842,6 +3983,21 @@ ensureSubscriptionSelection();
   .monitor-row { grid-template-columns: 1fr; }
   .monitor-side { min-width: 0; align-items: flex-start; }
   .topic-meta-grid { grid-template-columns: 1fr; }
+  .cfg3-ast-group-head {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .cfg3-ast-op-select {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+  .cfg3-ast-group-actions {
+    width: 100%;
+    margin-left: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
   .cfg3-ast-condition-row { grid-template-columns: 1fr; }
   .cfg3-ast-mini-btn { width: 100%; justify-content: center; }
   .cfg3-ast-mark,

@@ -108,7 +108,7 @@
                                   <span class="topic-badge"># {{ item.topic }}</span>
                                 </div>
                                 <div class="account-handle">{{ getAccountHandle(item) }}</div>
-                                <div class="desc account-desc">{{ item.summary }}</div>
+                                <div class="desc account-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
                               </div>
                             </div>
 
@@ -166,7 +166,7 @@
                               <span class="topic-badge"># {{ item.topic }}</span>
                             </div>
 
-                            <div class="person-desc">{{ item.summary }}</div>
+                            <div class="person-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
 
                             <div class="person-alias-row">
                               <button v-for="alias in getPersonAliases(item)" :key="alias" class="person-alias-chip" @click.stop="drillDown(alias)">
@@ -207,7 +207,7 @@
                               <span class="topic-badge"># {{ item.topic }}</span>
                             </div>
 
-                            <div class="intel-desc">{{ item.summary }}</div>
+                            <div class="intel-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
 
                             <div class="intel-entity-row">
                               <button v-for="ent in getIntelEntities(item)" :key="ent" class="intel-entity-chip" :class="`tone-${getIntelEntityTone(ent)}`" @click.stop="drillDown(ent)">
@@ -242,11 +242,11 @@
                             <span class="head-icon"><i :class="getMediaIcon(item.media)"></i></span>
                             <div class="top-meta">
                               <div class="title-row">
-                                <strong class="card-title">{{ item.title }}</strong>
+                                <strong class="card-title" v-html="highlightKeyword(item.title, state.submittedKeyword)"></strong>
                                 <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
                                 <span class="topic-badge"># {{ item.topic }}</span>
                               </div>
-                              <div class="desc">{{ item.summary }}</div>
+                              <div class="desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
                             </div>
                           </div>
                           <label class="pick-box" @click.stop>
@@ -358,7 +358,7 @@
                                     <span class="topic-badge"># {{ item.topic }}</span>
                                   </div>
                                   <div class="account-handle">{{ getAccountHandle(item) }}</div>
-                                  <div class="desc account-desc">{{ item.summary }}</div>
+                                  <div class="desc account-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
                                 </div>
                               </div>
 
@@ -416,7 +416,7 @@
                                 <span class="topic-badge"># {{ item.topic }}</span>
                               </div>
 
-                              <div class="person-desc">{{ item.summary }}</div>
+                              <div class="person-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
 
                               <div class="person-alias-row">
                                 <button v-for="alias in getPersonAliases(item)" :key="alias" class="person-alias-chip" @click.stop="drillDown(alias)">
@@ -457,7 +457,7 @@
                                 <span class="topic-badge"># {{ item.topic }}</span>
                               </div>
 
-                              <div class="intel-desc">{{ item.summary }}</div>
+                              <div class="intel-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
 
                               <div class="intel-entity-row">
                                 <button v-for="ent in getIntelEntities(item)" :key="ent" class="intel-entity-chip" :class="`tone-${getIntelEntityTone(ent)}`" @click.stop="drillDown(ent)">
@@ -591,7 +591,7 @@
             <div v-else class="basket-list">
               <div v-for="item in basketItems" :key="item.id" class="basket-item">
                 <div class="basket-item-main" @click="openDetail(item)">
-                  <div class="basket-title">{{ item.title }}</div>
+                  <div class="basket-title" v-html="highlightKeyword(item.title, state.submittedKeyword)"></div>
                   <div class="basket-meta">{{ item.viewType }} · {{ item.risk }} · {{ item.region }}</div>
                 </div>
                 <button class="icon-btn" @click="removeFromBasket(item.id)"><i class="fa-solid fa-trash"></i></button>
@@ -885,11 +885,11 @@ const fetchSearchResults = async (keyword = '') => {
     const params = new URLSearchParams();
     params.append('limit', '20');
     if (keyword) params.append('keyword', keyword);
-    const response = await fetch(`/api/v1/intel/list?${params.toString()}`);
+    const response = await fetch(`/api/search/unified?${params.toString()}`);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const result = await response.json();
-    if (result.code === 200 && Array.isArray(result.data)) {
-      apiData.value = result.data.map((item) => ({ ...item, avatar: '/offline/avatar-default.svg' }));
+    if (result.items && Array.isArray(result.items)) {
+      apiData.value = result.items.map((item) => ({ ...item, avatar: '/offline/avatar-default.svg' }));
     } else {
       apiData.value = [];
     }
@@ -968,6 +968,13 @@ const keywordPass = (item) => {
   if (!state.submittedKeyword) return true;
   const target = [item.title, item.summary, item.region, item.topic, item.media, ...item.entities, ...(item.relatedAccounts || [])].join(' | ').toLowerCase();
   return target.includes(state.submittedKeyword.toLowerCase());
+};
+
+const highlightKeyword = (text, keyword) => {
+  if (!keyword || !text) return text;
+  if (typeof text !== 'string') return text;
+  const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return text.replace(regex, '<mark class="search-highlight">$1</mark>');
 };
 
 const getRuleNameByItem = (item) => {
@@ -2113,6 +2120,12 @@ watch(() => [state.currentView, state.quickTime, state.region, state.riskSet.len
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.search-highlight {
+  background-color: rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+  border-radius: 2px;
+  padding: 0 2px;
 }
 .risk-badge { font-size: 11px; border: 1px solid; border-radius: 999px; padding: 1px 8px; }
 .risk-badge.high { color: #fca5a5; border-color: #ef4444; }
