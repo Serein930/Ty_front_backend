@@ -113,7 +113,7 @@ class MetaConfig(BaseModel):
 
 
 class SubscriptionTopicCreate(BaseModel):
-    name: Optional[str] = None
+    rule_name: Optional[str] = None
     enabled: EnableStatus = EnableStatus.ENABLED
     status: RuleStatus = RuleStatus.DRAFT
     mode: RuleMode = RuleMode.BASIC
@@ -156,8 +156,8 @@ class SubscriptionTopicCreate(BaseModel):
 
 
 class SubscriptionTopicResponse(BaseModel):
-    id: int
-    name: Optional[str] = None
+    rule_code: str
+    rule_name: Optional[str] = None
     enabled: EnableStatus = EnableStatus.ENABLED
     status: RuleStatus = RuleStatus.DRAFT
     mode: RuleMode = RuleMode.BASIC
@@ -177,8 +177,8 @@ class SubscriptionTopicResponse(BaseModel):
 
 
 class SubscriptionTopicListItem(BaseModel):
-    id: int
-    name: Optional[str] = None
+    rule_code: str
+    rule_name: Optional[str] = None
     enabled: Optional[int] = 1
     charge_person: Optional[str] = None
     summary: Optional[str] = None
@@ -186,8 +186,8 @@ class SubscriptionTopicListItem(BaseModel):
 
 
 class TopicIdNameItem(BaseModel):
-    id: int
-    name: Optional[str] = None
+    rule_code: str
+    rule_name: Optional[str] = None
 
 
 SubscriptionTopicPayload = SubscriptionTopicCreate

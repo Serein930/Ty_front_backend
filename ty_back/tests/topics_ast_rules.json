@@ -1,0 +1,85 @@
+{
+  "schema_version": "router_gw_v15.0",
+  "adapter_version": "2.0",
+  "rules": [
+    {
+      "id": "1776672049718",
+      "name": "东南亚走私高危监测",
+      "enabled": true,
+      "status": "applied",
+      "mode": "basic",
+      "basic": {
+        "topics": ["TopicDrugs"],
+        "severity": "HIGH",
+        "risk_min": 75,
+        "locations": ["缅北"],
+        "labels": ["贩毒", "暗网担保"]
+      },
+      "ast": {
+        "type": null,
+        "op": null,
+        "children": null
+      },
+      "meta": {
+        "owner": "SystemAdmin",
+        "priority": 80,
+        "desc": "重点监控东南亚到广东的走私水客高分线索"
+      }
+    },
+    {
+      "id": "1776672067839",
+      "name": "缅北高危洗钱跑分监控",
+      "enabled": true,
+      "status": "applied",
+      "mode": "ast",
+      "basic": {
+        "topics": [],
+        "severity": "MEDIUM",
+        "risk_min": null,
+        "locations": [],
+        "labels": []
+      },
+      "ast": {
+        "type": "GROUP",
+        "op": "AND",
+        "children": [
+          {
+            "type": "COND",
+            "field": "threat_category",
+            "op": "in_list",
+            "value": "TopicDrugs,TopicCybercrime"
+          },
+          {
+            "type": "COND",
+            "field": "risk_score",
+            "op": "gte",
+            "value": "80"
+          },
+          {
+            "type": "GROUP",
+            "op": "OR",
+            "children": [
+              {
+                "type": "COND",
+                "field": "labels",
+                "op": "any_of",
+                "value": "跑分"
+              },
+              {
+                "type": "COND",
+                "field": "ioc_location",
+                "op": "any_of",
+                "value": "缅北"
+              }
+            ]
+          }
+        ]
+      },
+      "meta": {
+        "owner": "SystemAdmin",
+        "priority": 95,
+        "desc": "专家模式：精准打击跨境高分洗钱团伙"
+      }
+    }
+  ]
+}

@@ -19,6 +19,7 @@
 
 # app/utils/ch_client.py
 import httpx
+from httpx import HTTPStatusError
 from app.config.config import ch_settings
 
 
@@ -28,21 +29,38 @@ async def execute_ch_query(query: str):
     """
     url = f"http://{ch_settings.HOST}:{ch_settings.PORT}/"
 
-    # ClickHouse HTTP API 的标准参数格式
+    is_write_query = any(q.strip().upper().startswith(("ALTER", "INSERT", "UPDATE", "DELETE")) for q in query.split(";"))
+
     params = {
         "query": query,
         "user": ch_settings.USER,
         "password": ch_settings.PASSWORD,
         "database": ch_settings.DATABASE,
-        "default_format": "JSON"  # 告诉 ClickHouse 直接返回 JSON 格式，方便处理
     }
+    if not is_write_query:
+        params["default_format"] = "JSON"
 
-    # 使用 httpx 发起异步 POST 请求
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, params=params, timeout=10.0)
-        # 如果 HTTP 状态码不是 200，主动抛出异常
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(url, params=params)
+        if is_write_query:
+            if response.status_code != 200:
+                raise HTTPStatusError(
+                    message=f"ClickHouse write error: {response.text}",
+                    request=response.request,
+                    response=response
+                )
+            content = response.text.strip()
+            if content and "Exception" in content:
+                raise Exception(f"ClickHouse query error: {content}")
+            return {"success": True, "status_code": response.status_code}
         response.raise_for_status()
-        return response.json()
+        content = response.text.strip()
+        if not content:
+            return {}
+        try:
+            return response.json()
+        except Exception:
+            return {}
 
 # ... 原有代码保持不变 ...
 

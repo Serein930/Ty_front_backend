@@ -16,11 +16,18 @@ def _execute_ch_query(query: str) -> Dict[str, Any]:
         params["default_format"] = "JSON"
 
     with httpx.Client(timeout=30.0) as client:
-        response = client.post(url, params=params)
         if is_write_query:
+            write_params = {
+                "query": query,
+                "user": ch_settings.USER,
+                "password": ch_settings.PASSWORD,
+                "database": ch_settings.DATABASE,
+            }
+            response = client.post(url, params=write_params)
             if response.status_code != 200:
                 response.raise_for_status()
             return {"success": True}
+        response = client.post(url, params=params)
         response.raise_for_status()
         try:
             return response.json()
@@ -57,6 +64,7 @@ def get_alert_list_all() -> Dict[str, Any]:
             source_handle,
             entity_values_text
         FROM hawkeye_test.hawkeye_ads_alert_event_latest
+        WHERE false_positive != 1
         ORDER BY report_time DESC
     """
 
