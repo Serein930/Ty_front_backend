@@ -1209,6 +1209,25 @@ const loadScript = (src) => {
   });
 };
 
+const bindGlobalEcharts = () => {
+  if (typeof window !== 'undefined') {
+    window.echarts = echarts;
+  }
+};
+
+const loadFirstAvailableScript = async (sources = []) => {
+  let lastError = null;
+  for (const src of sources) {
+    try {
+      await loadScript(src);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('No available script source');
+};
+
 const syncMapFromWindowEcharts = (mapName) => {
   if (!mapName || echarts.getMap(mapName)) return;
   const winEcharts = window.echarts;
@@ -1221,6 +1240,29 @@ const syncMapFromWindowEcharts = (mapName) => {
   if (!geoJSON) return;
 
   echarts.registerMap(mapName, geoJSON, mapRecord.specialAreas || {});
+};
+
+const ensureBaseMaps = async () => {
+  bindGlobalEcharts();
+
+  const mapSources = {
+    world: [
+      'https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js',
+      'https://unpkg.com/echarts@4.9.0/map/js/world.js'
+    ],
+    china: [
+      'https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/china.js',
+      'https://unpkg.com/echarts@4.9.0/map/js/china.js'
+    ]
+  };
+
+  await loadFirstAvailableScript(mapSources.world);
+  await loadFirstAvailableScript(mapSources.china);
+
+  syncMapFromWindowEcharts('world');
+  syncMapFromWindowEcharts('china');
+
+  return Boolean(echarts.getMap('world') && echarts.getMap('china'));
 };
 
 const updateNowTime = () => {
@@ -1312,6 +1354,137 @@ const buildMapOption = () => {
     }))
     .filter(p => p.value);
 
+  const worldNodeMap = {
+    usWest: { name: '美国西岸', value: [-122.4194, 37.7749, 92], color: '#22d3ee' },
+    usEast: { name: '美国东岸', value: [-74.006, 40.7128, 88], color: '#a855f7' },
+    ru: { name: '东欧节点', value: [37.6173, 55.7558, 95], color: '#ef4444' },
+    me: { name: '中东节点', value: [46.6753, 24.7136, 90], color: '#f59e0b' },
+    sa: { name: '南美节点', value: [-74.0721, 4.711, 84], color: '#10b981' }
+  };
+
+  const sceneRoutes = {
+    global: [
+      { from: 'usWest', to: 'usEast', color: '#22d3ee' },
+      { from: 'usEast', to: 'ru', color: '#a855f7' },
+      { from: 'me', to: 'sa', color: '#10b981' },
+      { from: 'ru', to: 'me', color: '#f59e0b' }
+    ],
+    black: [
+      { from: 'usWest', to: 'usEast', color: '#06b6d4' },
+      { from: 'usEast', to: 'ru', color: '#8b5cf6' },
+      { from: 'ru', to: 'me', color: '#ef4444' }
+    ],
+    leak: [
+      { from: 'usEast', to: 'ru', color: '#3b82f6' },
+      { from: 'ru', to: 'me', color: '#60a5fa' },
+      { from: 'usWest', to: 'sa', color: '#22d3ee' }
+    ],
+    terror: [
+      { from: 'me', to: 'ru', color: '#ef4444' },
+      { from: 'me', to: 'usEast', color: '#fb7185' },
+      { from: 'ru', to: 'usWest', color: '#f97316' }
+    ],
+    smuggle: [
+      { from: 'sa', to: 'usWest', color: '#10b981' },
+      { from: 'usEast', to: 'me', color: '#f59e0b' },
+      { from: 'me', to: 'ru', color: '#f97316' }
+    ],
+    drug: [
+      { from: 'sa', to: 'usWest', color: '#34d399' },
+      { from: 'sa', to: 'usEast', color: '#10b981' },
+      { from: 'usEast', to: 'ru', color: '#22c55e' }
+    ]
+  };
+
+  const currentRoutes = sceneRoutes[mapScene.value] || sceneRoutes.global;
+  const worldLines = currentRoutes.map((route) => ({
+    coords: [worldNodeMap[route.from].value.slice(0, 2), worldNodeMap[route.to].value.slice(0, 2)],
+    lineStyle: {
+      color: route.color,
+      width: 2.6,
+      opacity: 0.95,
+      curveness: 0.28
+    }
+  }));
+
+  const worldNodes = Object.values(worldNodeMap);
+
+  if (name === 'world') {
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'item',
+        formatter: (params) => {
+          if (Array.isArray(params.value)) {
+            return `${params.name}<br/>风险值: ${params.value[2]}`;
+          }
+          return `${params.name}`;
+        }
+      },
+      geo: {
+        map: 'world',
+        roam: true,
+        zoom: 1,
+        layoutCenter: ['50%', '56%'],
+        layoutSize: '118%',
+        scaleLimit: { min: 1, max: 10 },
+        label: { show: false },
+        itemStyle: {
+          areaColor: '#071a45',
+          borderColor: '#1e56c8',
+          borderWidth: 1.4,
+          shadowColor: 'rgba(30, 86, 200, 0.25)',
+          shadowBlur: 10
+        },
+        emphasis: {
+          disabled: true
+        }
+      },
+      series: [
+        {
+          type: 'lines',
+          coordinateSystem: 'geo',
+          zlevel: 3,
+          effect: {
+            show: true,
+            period: 4,
+            trailLength: 0,
+            symbol: 'circle',
+            symbolSize: 4,
+            color: '#e2e8f0'
+          },
+          lineStyle: {
+            width: 2.4,
+            opacity: 0.85,
+            curveness: 0.28,
+            color: lineColor
+          },
+          data: worldLines
+        },
+        {
+          type: 'effectScatter',
+          coordinateSystem: 'geo',
+          zlevel: 4,
+          data: worldNodes,
+          symbolSize: (val) => Math.max(10, Math.round(val[2] / 8)),
+          rippleEffect: {
+            period: 3,
+            scale: 3,
+            brushType: 'stroke'
+          },
+          itemStyle: {
+            color: (params) => params.data.color,
+            shadowBlur: 14,
+            shadowColor: 'rgba(255, 255, 255, 0.35)'
+          },
+          label: {
+            show: false
+          }
+        }
+      ]
+    };
+  }
+
   return {
     backgroundColor: 'transparent',
     tooltip: {
@@ -1330,7 +1503,7 @@ const buildMapOption = () => {
       center: mapMode.value === 'china' ? [104, 35.5] : [12, 25],
       layoutCenter: ['50%', '54%'],
       layoutSize: mapMode.value === 'china' ? '125%' : '118%',
-      scaleLimit: { min: 0.9, max: 5 },
+      scaleLimit: { min: 1, max: 12 },
       label: { show: false, color: '#94a3b8' },
       itemStyle: {
         areaColor: '#10213f',
@@ -1457,10 +1630,11 @@ onMounted(async () => {
 
   // Load map definitions, but do not block page initialization if network is unavailable.
   try {
-    await loadScript('https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js');
-    await loadScript('https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/china.js');
-    syncMapFromWindowEcharts('world');
-    syncMapFromWindowEcharts('china');
+    const loaded = await ensureBaseMaps();
+    mapFallback.value = !loaded;
+    if (!loaded) {
+      showToast('地图底图注册失败，已降级显示。');
+    }
   } catch {
     mapFallback.value = true;
     showToast('地图底图资源加载失败，已降级显示。');
