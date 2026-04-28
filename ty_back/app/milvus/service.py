@@ -1,3 +1,4 @@
+import math
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -27,7 +28,9 @@ def get_embedding(text: str, timeout_seconds: float = 30.0) -> List[float]:
         response = client.post(url, json=payload, headers=headers)
         response.raise_for_status()
         result = response.json()
-        return result["data"][0]["embedding"]
+        raw_vec = result["data"][0]["embedding"]
+        norm = math.sqrt(sum(x * x for x in raw_vec))
+        return [x / norm for x in raw_vec] if norm > 0 else raw_vec
 
 
 def create_ty_content_collection() -> Collection:
@@ -65,7 +68,7 @@ def create_ty_content_collection() -> Collection:
 
     index_params = {
         "index_type": "IVF_FLAT",
-        "metric_type": "L2",
+        "metric_type": "IP",
         "params": {"nlist": 128}
     }
     collection.create_index(field_name="vector", index_params=index_params)
@@ -159,7 +162,7 @@ def search_vectors(query_text: str, top_k: int = 1, expr: str = None) -> List[Di
     query_vector = get_embedding(query_text)
 
     search_params = {
-        "metric_type": "L2",
+        "metric_type": "IP",
         "params": {"nprobe": 10}
     }
 

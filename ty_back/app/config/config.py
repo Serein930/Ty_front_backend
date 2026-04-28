@@ -48,7 +48,8 @@ class LLMSettings:
     def __init__(self) -> None:
         self.API_BASE: str = os.getenv("LLM_API_BASE", "http://172.23.216.104:6006/v1")
         self.API_KEY: str = os.getenv("LLM_API_KEY", "EMPTY")
-        self.MODEL_NAME: str = os.getenv("LLM_MODEL_NAME", "Qwen3-14B")
+        # self.MODEL_NAME: str = os.getenv("LLM_MODEL_NAME", "Qwen3-14B")
+        self.MODEL_NAME: str = os.getenv("LLM_MODEL_NAME", "Qwen3.6-35B-A3B")
 
 
 class MilvusSettings:

@@ -1,7 +1,17 @@
+import logging
+import sys
 from fastapi import FastAPI
 
 from app.routers import search, topics, translate, rag_search
 from app.milvus.router import router as milvus_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
