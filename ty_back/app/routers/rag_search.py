@@ -90,6 +90,119 @@ async def rag_search(request: RAGSearchRequest):
         raise HTTPException(status_code=500, detail=f"RAG 搜索失败: {str(e)}")
 
 
+@router.post("/search/stream")
+async def rag_search_stream(request: RAGSearchRequest):
+    """
+    RAG 智能搜索流式接口
+
+    使用 Server-Sent Events (SSE) 流式返回：
+    1. 思考过程（reasoning）
+    2. 最终答案
+
+    事件格式：
+    - event: thinking | answer | done | error
+    - data: JSON 字符串
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+
+    async def event_generator():
+        import json
+        logger.info(f"[stream] 开始处理请求, session_id: {request.session_id}, question: {request.question}")
+        try:
+            rag_search_service._ensure_session_loaded(request.session_id)
+            logger.info(f"[stream] 会话已加载")
+
+            rewritten_question = rag_search_service._rewrite_question(
+                request.question, request.session_id
+            )
+            logger.info(f"[stream] 改写后的问题: {rewritten_question}")
+            yield f"event: rewritten\ndata: {json.dumps({'question': rewritten_question})}\n\n"
+
+            logger.info(f"[stream] 开始检索内容...")
+            all_results = rag_search_service._search_content(rewritten_question)
+            logger.info(f"[stream] 检索完成，结果数量: {len(all_results)}")
+            
+            if request.use_rerank and rag_search_service.reranker:
+                all_results = rag_search_service._rerank_results(request.question, all_results)
+                logger.info(f"[stream] Rerank 后结果数量: {len(all_results)}")
+            
+            all_results = all_results[:20]
+            logger.info(f"[stream] 最终返回结果数量: {len(all_results)}")
+
+            yield f"event: sources\ndata: {json.dumps({'sources': all_results})}\n\n"
+
+            full_answer = []
+            thinking_content = []
+            think_phase = False
+            answer_phase = False
+            logger.info(f"[stream] 🔄 开始流式生成答案...")
+            async for chunk in rag_search_service.generate_answer_stream(
+                question=request.question,
+                context=all_results,
+                session_id=request.session_id
+            ):
+                event_type = chunk.get("event", "answer")
+                content = chunk.get("content", "")
+
+                if event_type == "done":
+                    logger.info(f"[stream] 收到流结束信号")
+                    continue
+
+                if event_type == "error":
+                    logger.error(f"[stream] 收到错误事件: {content}")
+                    yield f"event: error\ndata: {json.dumps({'message': content})}\n\n"
+                    return
+
+                logger.debug(f"[stream] 收到事件: {event_type}, content长度: {len(content)}")
+
+                if event_type == "thinking" and content:
+                    if not think_phase:
+                        logger.info(f"[stream] 🧠 ===== 阶段1: 开始流式输出思考过程 (SSE) =====")
+                        think_phase = True
+                    thinking_content.append(content)
+                    yield f"event: thinking\ndata: {json.dumps({'content': content})}\n\n"
+                elif event_type == "answer" and content:
+                    if not answer_phase:
+                        if think_phase:
+                            logger.info(f"[stream] ✅ 思考过程全部输出完毕 (共 {len(''.join(thinking_content))} 字符)")
+                        logger.info(f"[stream] 📝 ===== 阶段2: 开始流式输出最终答案 (SSE) =====")
+                        answer_phase = True
+                    full_answer.append(content)
+                    yield f"event: answer\ndata: {json.dumps({'content': content})}\n\n"
+
+            final_answer = "".join(full_answer)
+            final_thinking = "".join(thinking_content)
+            logger.info(f"[stream] 📊 ===== 流式输出统计 =====")
+            logger.info(f"[stream]   思考过程: {len(final_thinking)} 字符")
+            logger.info(f"[stream]   最终答案: {len(final_answer)} 字符")
+            if final_thinking:
+                logger.info(f"[stream] 完整思考过程:\n{final_thinking}")
+            if final_answer:
+                logger.info(f"[stream] 完整最终输出:\n{final_answer}")
+
+            # Always send the done event after the generator completes
+            yield f"event: done\ndata: {json.dumps({'model': rag_search_service.llm_generator.model_name})}\n\n"
+
+            rag_search_service._manage_history(request.session_id, request.question, final_answer)
+            logger.info(f"[stream] 历史已保存")
+            logger.info(f"[stream] 流式响应完成")
+
+        except Exception as e:
+            logger.error(f"[stream] 流式搜索失败: {e}", exc_info=True)
+            yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
 @router.get("/history/{session_id}", response_model=RAGHistoryResponse)
 async def get_rag_history(session_id: str):
     """
