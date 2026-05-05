@@ -113,7 +113,7 @@ class MetaConfig(BaseModel):
 
 
 class SubscriptionTopicCreate(BaseModel):
-    rule_name: Optional[str] = None
+    rule_name: str
     enabled: EnableStatus = EnableStatus.ENABLED
     status: RuleStatus = RuleStatus.DRAFT
     mode: RuleMode = RuleMode.BASIC
@@ -146,12 +146,15 @@ class SubscriptionTopicCreate(BaseModel):
         return values
 
     @model_validator(mode="after")
+    def validate_rule_name_not_empty(self):
+        if not self.rule_name or not self.rule_name.strip():
+            raise ValueError("rule_name 字符串不能为空")
+        return self
+
+    @model_validator(mode="after")
     def validate_basic_mode(self):
-        if self.mode == RuleMode.BASIC:
-            if not self.basic_config or not self.basic_config.threat_category:
-                raise ValueError("basic_config.threat_category 列表不能为空")
-            if not self.meta or not self.meta.charge_person:
-                raise ValueError("meta.charge_person 字符串不能为空")
+        if not self.meta or not self.meta.charge_person:
+            raise ValueError("meta.charge_person 字符串不能为空")
         return self
 
 
@@ -180,6 +183,7 @@ class SubscriptionTopicListItem(BaseModel):
     rule_code: str
     rule_name: Optional[str] = None
     enabled: Optional[int] = 1
+    status: Optional[str] = None
     charge_person: Optional[str] = None
     summary: Optional[str] = None
     final_syn_time: Optional[datetime] = None
@@ -188,6 +192,30 @@ class SubscriptionTopicListItem(BaseModel):
 class TopicIdNameItem(BaseModel):
     rule_code: str
     rule_name: Optional[str] = None
+
+
+class RuleSaveRequest(BaseModel):
+    rule_id: Optional[str] = Field(default=None, description="规则CODE，新增时为None或空字符串")
+    rule_name: Optional[str] = Field(default=None, description="规则名称")
+    enabled: EnableStatus = EnableStatus.ENABLED
+    status: RuleStatus = RuleStatus.DRAFT
+    mode: RuleMode = RuleMode.BASIC
+    basic_config: Optional[Dict[str, Any]] = Field(default=None)
+    ast_config: Optional[Dict[str, Any]] = Field(default=None)
+    governance: Optional[Dict[str, Any]] = Field(default=None)
+    delivery: Optional[Dict[str, Any]] = Field(default=None)
+    meta: Optional[Dict[str, Any]] = Field(default=None)
+
+    model_config = {"populate_by_name": True}
+
+
+class HistoryRecordItem(BaseModel):
+    history_id: str
+    rule_code: str
+    action: str
+    operator: Optional[str] = None
+    snapshot_data: Dict[str, Any]
+    created_at: datetime
 
 
 SubscriptionTopicPayload = SubscriptionTopicCreate

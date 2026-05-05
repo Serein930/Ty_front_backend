@@ -29,6 +29,7 @@ class AlertListItem(BaseModel):
     source_handle: Optional[str] = Field(default=None, alias="source_handle")
     source_type: Optional[str] = Field(default=None, alias="source_type")
     entity_values_text: Optional[str] = Field(default=None, alias="entity_values_text")
+    is_monitor_target: Optional[int] = Field(default=None, alias="is_monitor_target")
 
     class Config:
         populate_by_name = True
@@ -41,8 +42,10 @@ class AlertDetailResponse(BaseModel):
 
 
 class AlertListResponse(BaseModel):
-    total: int
     items: List[AlertListItem]
+    total: int
+    page: int
+    page_size: int
 
 
 class RuleNameStatItem(BaseModel):

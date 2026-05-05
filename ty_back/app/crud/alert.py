@@ -74,6 +74,8 @@ def get_alert_list_all() -> Dict[str, Any]:
 
     items = []
     for row in rows:
+        if row.get("false_positive") == 1:
+            continue
         item = {
             "event_id": row.get("event_id"),
             "rule_code": row.get("rule_code"),
@@ -103,6 +105,8 @@ def get_alert_list_all() -> Dict[str, Any]:
         }
         items.append(item)
 
+    total = len(items)
+
     return {"total": total, "items": items}
 
 
@@ -110,6 +114,7 @@ def get_rule_name_stats() -> List[Dict[str, Any]]:
     query = """
         SELECT rule_name, count() as count
         FROM hawkeye_test.hawkeye_ads_alert_event_latest
+        WHERE false_positive != 1
         GROUP BY rule_name
         ORDER BY count DESC
         LIMIT 5
