@@ -8,6 +8,7 @@
   align-items: center;
   min-height: 0;
   padding-top: 0;
+  padding-bottom: 15vh;
 }
 .search-page .legacy-search-wrapper { width: min(980px, 92%); text-align: center; }
 .search-page .legacy-title { font-size: 32px; color: #dbeafe; margin-bottom: 10px; }
