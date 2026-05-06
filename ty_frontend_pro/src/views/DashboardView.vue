@@ -497,11 +497,11 @@
                       <div class="cfg3-field">
                         <label><i class="fa-solid fa-triangle-exclamation"></i> 最低接收危害等级</label>
                         <select v-model="subscriptionEditor.minSeverity" class="sub-select cfg3-severity-select">
-                          <option value="ALL">全部接收 (All)</option>
-                          <option value="LOW">低危及以上 (&gt;= Low)</option>
-                          <option value="MEDIUM">中危及以上 (&gt;= Medium)</option>
-                          <option value="HIGH">高危及以上 (&gt;= High)</option>
-                          <option value="CRITICAL">致命及以上 (&gt;= Critical)</option>
+                          <option value="ALL">全部接收</option>
+                          <option value="LOW">低危及以上</option>
+                          <option value="MEDIUM">中危及以上</option>
+                          <option value="HIGH">高危及以上</option>
+                          <option value="CRITICAL">致命及以上</option>
                         </select>
                       </div>
                       <div class="cfg3-field">

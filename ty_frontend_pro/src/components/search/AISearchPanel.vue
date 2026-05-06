@@ -32,27 +32,27 @@
         <i class="fa-solid fa-circle-notch fa-spin"></i> 正在检索...
       </div>
       <div v-else-if="sourceCount > 0" class="ref-list custom-scrollbar">
-        <div class="ai-sources-list">
-          <div
+        <div class="ai-ref-card-list">
+          <IntelCard
             v-for="source in sources"
             :key="source.id"
-            class="ai-source-item"
+            :item="source"
+            :keyword="keyword"
+            :display-title="source.title || '未命名线索'"
+            :channel="source.channel || ''"
+            :time="source.date || ''"
+            :entities="source.entities || []"
+            :stats="{ fwd: undefined, cmt: undefined }"
+            :score="source.score"
+            :compact="true"
+            :show-checkbox="false"
+            :show-basket-btn="false"
+            :risk-class="riskClass || defaultRiskClass"
+            :get-media-icon="getMediaIcon || defaultGetMediaIcon"
+            :get-entity-tone="defaultGetEntityTone"
+            :highlight-keyword="defaultHighlightKeyword"
             @click="$emit('open-detail', source)"
-          >
-            <div class="ai-source-header">
-              <span class="ai-source-type" :class="source.viewType">
-                {{ source.viewType === 'intel' ? '情报' : source.viewType === 'person' ? '人物' : '账号' }}
-              </span>
-              <span class="ai-source-score" v-if="source.score">相关度: {{ (source.score * 100).toFixed(1) }}%</span>
-            </div>
-            <div class="ai-source-title">{{ source.title }}</div>
-            <div class="ai-source-summary">{{ source.summary.substring(0, 80) }}...</div>
-            <div class="ai-source-meta">
-              <span :class="['risk-tag', riskClass(source.risk)]">{{ source.risk }}</span>
-              <span class="source-media"><i :class="getMediaIcon(source.media)"></i> {{ source.media }}</span>
-              <span class="source-region">{{ source.region }}</span>
-            </div>
-          </div>
+          />
         </div>
       </div>
       <div v-else class="empty-block">暂无参考源</div>
@@ -61,6 +61,8 @@
 </template>
 
 <script setup>
+import IntelCard from './IntelCard.vue';
+
 defineProps({
   outputHtml: {
     type: String,
@@ -98,16 +100,36 @@ defineProps({
     type: Boolean,
     default: false
   },
+  keyword: {
+    type: String,
+    default: ''
+  },
   riskClass: {
     type: Function,
-    default: (risk) => risk === '高危' ? 'high' : risk === '中危' ? 'mid' : 'low'
+    default: null
   },
   getMediaIcon: {
     type: Function,
-    default: (media) => 'fa-solid fa-globe'
+    default: null
   }
 });
 
 defineEmits(['toggle-left', 'toggle-right', 'send-followup', 'open-detail']);
+
+// 默认工具函数
+const defaultRiskClass = (risk) => risk === 'high' ? 'high' : risk === 'mid' ? 'mid' : 'low';
+const defaultGetMediaIcon = (media) => {
+  const map = {
+    'Telegram': 'fa-brands fa-telegram',
+    'Weibo': 'fa-brands fa-weibo',
+    'X': 'fa-brands fa-x-twitter',
+    'Tor': 'fa-solid fa-user-secret',
+    '跨平台聚合': 'fa-solid fa-circle-nodes',
+    '社工库关联': 'fa-solid fa-database'
+  };
+  return map[media] || 'fa-solid fa-globe';
+};
+const defaultGetEntityTone = () => 'id';
+const defaultHighlightKeyword = (text) => text;
 </script>
 

@@ -12,7 +12,7 @@
             <div class="account-name-line">
               <strong class="account-name">{{ displayName }}</strong>
               <span class="media-pill"><i :class="getMediaIcon(item.media)"></i> {{ platformLabel }}</span>
-              <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
+              <span class="risk-badge" :class="riskClass(item.risk)">{{ getRiskText(item.risk) }}</span>
               <span class="topic-badge"># {{ item.topic }}</span>
             </div>
             <div class="account-handle">{{ handle }}</div>
@@ -97,7 +97,7 @@ defineProps({
   },
   riskClass: {
     type: Function,
-    default: (risk) => risk === '高危' ? 'high' : risk === '中危' ? 'mid' : 'low'
+    default: (risk) => risk === 'high' ? 'high' : risk === 'mid' ? 'mid' : 'low'
   },
   getMediaIcon: {
     type: Function,
@@ -110,5 +110,7 @@ defineProps({
 });
 
 defineEmits(['click', 'toggle-basket', 'view-person']);
+
+const getRiskText = (risk) => ({ high: '高危', mid: '中危', low: '低危' }[risk] || risk);
 </script>
 

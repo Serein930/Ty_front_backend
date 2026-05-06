@@ -12,7 +12,7 @@
             <div class="person-detail-main">
               <div class="person-detail-name-row">
                 <span class="person-detail-name">{{ person.alias }}</span>
-                <span class="person-badge high">HIGH TARGET</span>
+                <span class="person-badge high">高危目标</span>
                 <span class="p-score-badge" :class="scoreClass(person.score)">P-{{ person.score }}</span>
                 <span class="conf-badge">{{ person.confidence }}% 综合置信度</span>
               </div>

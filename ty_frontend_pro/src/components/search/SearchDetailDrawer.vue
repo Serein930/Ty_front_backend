@@ -82,7 +82,7 @@
         <template v-else>
           <div class="base-grid">
             <div><span>类型：</span>{{ item.viewType }}</div>
-            <div><span>风险：</span>{{ item.risk }}</div>
+            <div><span>风险：</span>{{ getRiskText(item.risk) }}</div>
             <div><span>媒介：</span>{{ item.media }}</div>
             <div><span>地区：</span>{{ item.region }}</div>
             <div><span>话题：</span>{{ item.topic }}</div>
@@ -210,5 +210,7 @@ defineProps({
 });
 
 defineEmits(['close', 'action', 'open-owner']);
+
+const getRiskText = (risk) => ({ high: '高危', mid: '中危', low: '低危' }[risk] || risk);
 </script>
 

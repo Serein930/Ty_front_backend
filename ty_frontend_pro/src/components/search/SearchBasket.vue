@@ -12,7 +12,7 @@
     <div v-for="item in basketItems" :key="item.id" class="basket-item">
       <div class="basket-item-main" @click="$emit('open-detail', item)">
         <div class="basket-title" v-html="highlightKeyword(item.title, keyword)"></div>
-        <div class="basket-meta">{{ item.viewType }} · {{ item.risk }} · {{ item.region }}</div>
+        <div class="basket-meta">{{ item.viewType }} · {{ getRiskText(item.risk) }} · {{ item.region }}</div>
       </div>
       <button class="icon-btn" @click="$emit('remove', item.id)"><i class="fa-solid fa-trash"></i></button>
     </div>
@@ -40,5 +40,7 @@ defineProps({
 });
 
 defineEmits(['clear', 'analyze', 'open-detail', 'remove']);
+
+const getRiskText = (risk) => ({ high: '高危', mid: '中危', low: '低危' }[risk] || risk);
 </script>
 

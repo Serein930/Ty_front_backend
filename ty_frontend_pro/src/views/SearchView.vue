@@ -104,7 +104,7 @@
                                 <div class="account-name-line">
                                   <strong class="account-name">{{ getAccountDisplayName(item) }}</strong>
                                   <span class="media-pill"><i :class="getMediaIcon(item.media)"></i> {{ getPlatformLabel(item.media) }}</span>
-                                  <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
+                                  <span class="risk-badge" :class="riskClass(item.risk)">{{ getRiskText(item.risk) }}</span>
                                   <span class="topic-badge"># {{ item.topic }}</span>
                                 </div>
                                 <div class="account-handle">{{ getAccountHandle(item) }}</div>
@@ -160,11 +160,11 @@
 
                           <div class="person-main">
                             <div class="person-title-row">
-                              <span class="person-icon"><i class="fa-solid fa-user-astronaut"></i></span>
-                              <strong class="person-title">{{ getPersonDisplayName(item) }}</strong>
-                              <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
-                              <span class="topic-badge"># {{ item.topic }}</span>
-                            </div>
+                                <span class="person-icon"><i class="fa-solid fa-user-astronaut"></i></span>
+                                <strong class="person-title">{{ getPersonDisplayName(item) }}</strong>
+                                <span class="risk-badge" :class="riskClass(item.risk)">{{ getRiskText(item.risk) }}</span>
+                                <span class="topic-badge"># {{ item.topic }}</span>
+                              </div>
 
                             <div class="person-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
 
@@ -194,38 +194,43 @@
                       </template>
 
                       <template v-else-if="item.viewType === 'intel'">
-                        <div class="intel-card-head">
-                          <label class="intel-pick" @click.stop>
-                            <input type="checkbox" :checked="basketIdSet.has(item.id)" @change="toggleBasket(item)" />
-                          </label>
+                        <label class="intel-pick" @click.stop>
+                          <input type="checkbox" :checked="basketIdSet.has(item.id)" @change="toggleBasket(item)" />
+                        </label>
 
-                          <div class="intel-main">
-                            <div class="intel-title-row">
+                        <div class="intel-main">
+                          <div class="intel-title-row">
+                            <div class="intel-title-left">
                               <span class="intel-icon"><i class="fa-solid fa-file-shield"></i></span>
                               <strong class="intel-title">{{ getIntelDisplayTitle(item) }}</strong>
-                              <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
+                            </div>
+                            <div class="intel-title-right">
+                              <span class="badge" :class="riskBadgeClass(item.risk)">{{ getRiskText(item.risk) }}</span>
                               <span class="topic-badge"># {{ item.topic }}</span>
                             </div>
+                          </div>
 
-                            <div class="intel-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
+                          <div v-if="getIntelEntities(item).length > 0" class="intel-entity-row">
+                            <button v-for="ent in getIntelEntities(item)" :key="ent" class="intel-entity-chip" :class="`entity-${getIntelEntityTone(ent)}`" @click.stop="drillDown(ent)">
+                              <i class="fa-solid fa-tag"></i>
+                              {{ ent }}
+                            </button>
+                          </div>
 
-                            <div class="intel-entity-row">
-                              <button v-for="ent in getIntelEntities(item)" :key="ent" class="intel-entity-chip" :class="`tone-${getIntelEntityTone(ent)}`" @click.stop="drillDown(ent)">
-                                <i class="fa-solid fa-tag"></i>
-                                {{ ent }}
-                              </button>
+                          <div class="intel-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
+
+                          <div class="intel-footer">
+                            <div class="intel-meta-row">
+                              <span class="meta-source"><i :class="getMediaIcon(item.media)"></i> {{ item.media }} / {{ getIntelChannel(item) }}</span>
+                              <span><i class="fa-regular fa-clock"></i> {{ getIntelTime(item) }}</span>
+                              <span><i class="fa-solid fa-location-dot"></i> {{ item.region }}</span>
                             </div>
 
-                            <div class="intel-footer">
-                              <div class="intel-meta-row">
-                                <span class="meta-source"><i :class="getMediaIcon(item.media)"></i> {{ item.media }} / {{ getIntelChannel(item) }}</span>
-                                <span><i class="fa-regular fa-clock"></i> {{ getIntelTime(item) }}</span>
-                                <span><i class="fa-solid fa-location-dot"></i> {{ item.region }}</span>
-                                <button class="entity-chip intel-basket-btn" @click.stop="toggleBasket(item)">
-                                  <i class="fa-solid" :class="basketIdSet.has(item.id) ? 'fa-circle-check' : 'fa-circle-plus'"></i>
-                                  {{ basketIdSet.has(item.id) ? '移出线索篮' : '加入线索篮' }}
-                                </button>
-                              </div>
+                            <div class="intel-footer-right">
+                              <button class="entity-chip intel-basket-btn" @click.stop="toggleBasket(item)">
+                                <i class="fa-solid" :class="basketIdSet.has(item.id) ? 'fa-circle-check' : 'fa-circle-plus'"></i>
+                                {{ basketIdSet.has(item.id) ? '移出线索篮' : '加入线索篮' }}
+                              </button>
 
                               <div class="intel-social">
                                 <span class="intel-stats"><i class="fa-solid fa-share-nodes"></i> {{ getIntelStats(item).fwd }}</span>
@@ -243,7 +248,7 @@
                             <div class="top-meta">
                               <div class="title-row">
                                 <strong class="card-title" v-html="highlightKeyword(item.title, state.submittedKeyword)"></strong>
-                                <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
+                                <span class="risk-badge" :class="riskClass(item.risk)">{{ getRiskText(item.risk) }}</span>
                                 <span class="topic-badge"># {{ item.topic }}</span>
                               </div>
                               <div class="desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
@@ -311,28 +316,27 @@
                   <i class="fa-solid fa-circle-notch fa-spin"></i> 正在检索...
                 </div>
                 <div v-else-if="state.aiSources.length > 0" class="ref-list custom-scrollbar">
-                  <!-- AI 参考源列表 -->
-                  <div class="ai-sources-list">
-                    <div
+                  <div class="ai-ref-card-list">
+                    <IntelCard
                       v-for="source in state.aiSources"
                       :key="source.id"
-                      class="ai-source-item"
+                      :item="source"
+                      :keyword="state.submittedKeyword"
+                      :display-title="source.title || '未命名线索'"
+                      :channel="source.channel || ''"
+                      :time="source.date || ''"
+                      :entities="source.entities || []"
+                      :stats="{ fwd: undefined, cmt: undefined }"
+                      :score="source.score"
+                      :compact="true"
+                      :show-checkbox="false"
+                      :show-basket-btn="false"
+                      :risk-class="riskClass"
+                      :get-media-icon="getMediaIcon"
+                      :get-entity-tone="getIntelEntityTone"
+                      :highlight-keyword="highlightKeyword"
                       @click="openDetail(source)"
-                    >
-                      <div class="ai-source-header">
-                        <span class="ai-source-type" :class="source.viewType">
-                          {{ source.viewType === 'intel' ? '情报' : source.viewType === 'person' ? '人物' : '账号' }}
-                        </span>
-                        <span class="ai-source-score" v-if="source.score">相关度: {{ (source.score * 100).toFixed(1) }}%</span>
-                      </div>
-                      <div class="ai-source-title">{{ source.title }}</div>
-                      <div class="ai-source-summary">{{ source.summary.substring(0, 80) }}...</div>
-                      <div class="ai-source-meta">
-                        <span :class="['risk-tag', riskClass(source.risk)]">{{ source.risk }}</span>
-                        <span class="source-media"><i :class="getMediaIcon(source.media)"></i> {{ source.media }}</span>
-                        <span class="source-region">{{ source.region }}</span>
-                      </div>
-                    </div>
+                    />
                   </div>
                 </div>
                 <div v-else-if="finalFiltered.length === 0" class="empty-block">暂无参考源</div>
@@ -354,7 +358,7 @@
                                   <div class="account-name-line">
                                     <strong class="account-name">{{ getAccountDisplayName(item) }}</strong>
                                     <span class="media-pill"><i :class="getMediaIcon(item.media)"></i> {{ getPlatformLabel(item.media) }}</span>
-                                    <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
+                                    <span class="risk-badge" :class="riskClass(item.risk)">{{ getRiskText(item.risk) }}</span>
                                     <span class="topic-badge"># {{ item.topic }}</span>
                                   </div>
                                   <div class="account-handle">{{ getAccountHandle(item) }}</div>
@@ -412,7 +416,7 @@
                               <div class="person-title-row">
                                 <span class="person-icon"><i class="fa-solid fa-user-astronaut"></i></span>
                                 <strong class="person-title">{{ getPersonDisplayName(item) }}</strong>
-                                <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
+                                <span class="risk-badge" :class="riskClass(item.risk)">{{ getRiskText(item.risk) }}</span>
                                 <span class="topic-badge"># {{ item.topic }}</span>
                               </div>
 
@@ -444,38 +448,43 @@
                         </template>
 
                         <template v-else-if="item.viewType === 'intel'">
-                          <div class="intel-card-head">
-                            <label class="intel-pick" @click.stop>
-                              <input type="checkbox" :checked="basketIdSet.has(item.id)" @change="toggleBasket(item)" />
-                            </label>
+                          <label class="intel-pick" @click.stop>
+                            <input type="checkbox" :checked="basketIdSet.has(item.id)" @change="toggleBasket(item)" />
+                          </label>
 
-                            <div class="intel-main">
-                              <div class="intel-title-row">
+                          <div class="intel-main">
+                            <div class="intel-title-row">
+                              <div class="intel-title-left">
                                 <span class="intel-icon"><i class="fa-solid fa-file-shield"></i></span>
                                 <strong class="intel-title">{{ getIntelDisplayTitle(item) }}</strong>
-                                <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
+                              </div>
+                              <div class="intel-title-right">
+                                <span class="badge" :class="riskBadgeClass(item.risk)">{{ getRiskText(item.risk) }}</span>
                                 <span class="topic-badge"># {{ item.topic }}</span>
                               </div>
+                            </div>
 
-                              <div class="intel-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
+                            <div v-if="getIntelEntities(item).length > 0" class="intel-entity-row">
+                              <button v-for="ent in getIntelEntities(item)" :key="ent" class="intel-entity-chip" :class="`entity-${getIntelEntityTone(ent)}`" @click.stop="drillDown(ent)">
+                                <i class="fa-solid fa-tag"></i>
+                                {{ ent }}
+                              </button>
+                            </div>
 
-                              <div class="intel-entity-row">
-                                <button v-for="ent in getIntelEntities(item)" :key="ent" class="intel-entity-chip" :class="`tone-${getIntelEntityTone(ent)}`" @click.stop="drillDown(ent)">
-                                  <i class="fa-solid fa-tag"></i>
-                                  {{ ent }}
-                                </button>
+                            <div class="intel-desc" v-html="highlightKeyword(item.summary, state.submittedKeyword)"></div>
+
+                            <div class="intel-footer">
+                              <div class="intel-meta-row">
+                                <span class="meta-source"><i :class="getMediaIcon(item.media)"></i> {{ item.media }} / {{ getIntelChannel(item) }}</span>
+                                <span><i class="fa-regular fa-clock"></i> {{ getIntelTime(item) }}</span>
+                                <span><i class="fa-solid fa-location-dot"></i> {{ item.region }}</span>
                               </div>
 
-                              <div class="intel-footer">
-                                <div class="intel-meta-row">
-                                  <span class="meta-source"><i :class="getMediaIcon(item.media)"></i> {{ item.media }} / {{ getIntelChannel(item) }}</span>
-                                  <span><i class="fa-regular fa-clock"></i> {{ getIntelTime(item) }}</span>
-                                  <span><i class="fa-solid fa-location-dot"></i> {{ item.region }}</span>
-                                  <button class="entity-chip intel-basket-btn" @click.stop="toggleBasket(item)">
-                                    <i class="fa-solid" :class="basketIdSet.has(item.id) ? 'fa-circle-check' : 'fa-circle-plus'"></i>
-                                    {{ basketIdSet.has(item.id) ? '移出线索篮' : '加入线索篮' }}
-                                  </button>
-                                </div>
+                              <div class="intel-footer-right">
+                                <button class="entity-chip intel-basket-btn" @click.stop="toggleBasket(item)">
+                                  <i class="fa-solid" :class="basketIdSet.has(item.id) ? 'fa-circle-check' : 'fa-circle-plus'"></i>
+                                  {{ basketIdSet.has(item.id) ? '移出线索篮' : '加入线索篮' }}
+                                </button>
 
                                 <div class="intel-social">
                                   <span class="intel-stats"><i class="fa-solid fa-share-nodes"></i> {{ getIntelStats(item).fwd }}</span>
@@ -592,7 +601,7 @@
               <div v-for="item in basketItems" :key="item.id" class="basket-item">
                 <div class="basket-item-main" @click="openDetail(item)">
                   <div class="basket-title" v-html="highlightKeyword(item.title, state.submittedKeyword)"></div>
-                  <div class="basket-meta">{{ item.viewType }} · {{ item.risk }} · {{ item.region }}</div>
+                  <div class="basket-meta">{{ item.viewType }} · {{ getRiskText(item.risk) }} · {{ item.region }}</div>
                 </div>
                 <button class="icon-btn" @click="removeFromBasket(item.id)"><i class="fa-solid fa-trash"></i></button>
               </div>
@@ -737,6 +746,7 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import AppHeader from '../components/AppHeader.vue';
+import IntelCard from '../components/search/IntelCard.vue';
 
 const BASE_DATE = new Date('2026-03-25T00:00:00+08:00');
 
@@ -1051,7 +1061,9 @@ const ruleTop5 = computed(() => {
   return list.map((x) => ({ ...x, percent: Math.round((x.count / top) * 100) }));
 });
 
-const riskClass = (risk) => (risk === '高危' ? 'high' : risk === '中危' ? 'mid' : 'low');
+const getRiskText = (risk) => ({ high: '高危', mid: '中危', low: '低危' }[risk] || risk);
+const riskClass = (risk) => (risk === 'high' ? 'high' : risk === 'mid' ? 'mid' : 'low');
+const riskBadgeClass = (risk) => (risk === 'high' ? 'badge-danger' : risk === 'mid' ? 'badge-warning' : 'badge-success');
 const getPlatformLabel = (media) => {
   if (media === 'X') return 'X (Twitter)';
   return media;

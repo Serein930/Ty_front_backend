@@ -9,7 +9,7 @@
         <div class="person-title-row">
           <span class="person-icon"><i class="fa-solid fa-user-astronaut"></i></span>
           <strong class="person-title">{{ displayName }}</strong>
-          <span class="risk-badge" :class="riskClass(item.risk)">{{ item.risk }}</span>
+          <span class="risk-badge" :class="riskClass(item.risk)">{{ getRiskText(item.risk) }}</span>
           <span class="topic-badge"># {{ item.topic }}</span>
         </div>
 
@@ -74,7 +74,7 @@ defineProps({
   },
   riskClass: {
     type: Function,
-    default: (risk) => risk === '高危' ? 'high' : risk === '中危' ? 'mid' : 'low'
+    default: (risk) => risk === 'high' ? 'high' : risk === 'mid' ? 'mid' : 'low'
   },
   getMediaIcon: {
     type: Function,
@@ -87,5 +87,7 @@ defineProps({
 });
 
 defineEmits(['click', 'toggle-basket', 'drill-down']);
+
+const getRiskText = (risk) => ({ high: '高危', mid: '中危', low: '低危' }[risk] || risk);
 </script>
 
