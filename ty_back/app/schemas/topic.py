@@ -194,6 +194,10 @@ class TopicIdNameItem(BaseModel):
     rule_name: Optional[str] = None
 
 
+class SubscriptionTopicSearchRequest(BaseModel):
+    keyword: str = Field(..., description="搜索关键词，可匹配订阅名称、威胁分类、负责人或分发对象")
+
+
 class RuleSaveRequest(BaseModel):
     rule_id: Optional[str] = Field(default=None, description="规则CODE，新增时为None或空字符串")
     rule_name: Optional[str] = Field(default=None, description="规则名称")

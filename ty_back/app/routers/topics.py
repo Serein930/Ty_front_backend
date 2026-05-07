@@ -4,7 +4,7 @@ from typing import Any, List, Literal
 
 from fastapi import APIRouter, HTTPException, Path as PathParam, Query, Body
 
-from app.schemas.topic import SubscriptionTopicCreate, SubscriptionTopicResponse, SubscriptionTopicListItem, TopicIdNameItem
+from app.schemas.topic import SubscriptionTopicCreate, SubscriptionTopicResponse, SubscriptionTopicListItem, TopicIdNameItem, SubscriptionTopicSearchRequest
 from app.schemas.topic import RuleSaveRequest, HistoryRecordItem
 from app.schemas.alert import AlertListItem, AlertListResponse, AlertDetailResponse, RuleNameStatItem
 from app.schemas.base import Result
@@ -154,6 +154,78 @@ async def list_topic_names():
             TopicIdNameItem(
                 rule_code=row.get("rule_code", ""),
                 rule_name=row.get("rule_name", ""),
+            )
+        )
+
+    return Result.success(data=items)
+
+
+@router.post("/search", response_model=Result[list[SubscriptionTopicResponse]])
+async def search_topics(payload: SubscriptionTopicSearchRequest):
+    keyword = payload.keyword.strip()
+    if not keyword:
+        return Result.success(data=[])
+
+    escaped_keyword = _escape_sql_string(keyword)
+    like_pattern = f"%{escaped_keyword}%"
+
+    query = f"""
+    SELECT 
+        rule_code, rule_name, enabled, status, mode,
+        basic_config, ast_config, governance, delivery, meta,
+        created_at, updated_at, last_saved_draft_at, applied_at, deleted_at, final_syn_time
+    FROM {TABLE_NAME}
+    WHERE deleted_at IS NULL
+      AND (
+        rule_name LIKE '{like_pattern}'
+        OR JSONExtractString(meta, 'charge_person') LIKE '{like_pattern}'
+        OR basic_config LIKE '{like_pattern}'
+        OR ast_config LIKE '{like_pattern}'
+        OR delivery LIKE '{like_pattern}'
+      )
+    ORDER BY created_at DESC
+    """
+
+    result = await execute_ch_query(query)
+    items = []
+    for row in result.get("data", []):
+        basic_config_str = row.get("basic_config", "{}")
+        ast_config_str = row.get("ast_config", "{}")
+        governance_str = row.get("governance", "{}")
+        delivery_str = row.get("delivery", "{}")
+        meta_str = row.get("meta", "{}")
+
+        try:
+            basic_config = json.loads(basic_config_str) if basic_config_str else {}
+            ast_config = json.loads(ast_config_str) if ast_config_str else {}
+            governance = json.loads(governance_str) if governance_str else {}
+            delivery = json.loads(delivery_str) if delivery_str else {}
+            meta = json.loads(meta_str) if meta_str else {}
+        except json.JSONDecodeError:
+            basic_config = {}
+            ast_config = {}
+            governance = {}
+            delivery = {}
+            meta = {}
+
+        items.append(
+            SubscriptionTopicResponse(
+                rule_code=row.get("rule_code", ""),
+                rule_name=row.get("rule_name"),
+                enabled=row.get("enabled", 1),
+                status=row.get("status"),
+                mode=row.get("mode"),
+                basic_config=basic_config,
+                ast_config=ast_config,
+                governance=governance,
+                delivery=delivery,
+                meta=meta,
+                created_at=row.get("created_at"),
+                updated_at=row.get("updated_at"),
+                last_saved_draft_at=row.get("last_saved_draft_at"),
+                applied_at=row.get("applied_at"),
+                deleted_at=row.get("deleted_at"),
+                final_syn_time=row.get("final_syn_time"),
             )
         )
 
