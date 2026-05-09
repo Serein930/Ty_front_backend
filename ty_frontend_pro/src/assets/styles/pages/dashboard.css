@@ -253,7 +253,11 @@
 }
 .cfg3-title-edit-btn:hover { color: #fff; border-color: #3b82f6; }
 .cfg3-headline p { margin: 6px 0 0; color: #9fb0c9; font-size: 12px; }
+.cfg3-save-error { color: #ff6b6b !important; margin-top: 4px; }
 .cfg3-divider { margin: 0 6px; color: #64748b; }
+.cfg3-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cfg3-config-loading { color: #8c9db5; font-size: 12px; margin-left: 12px; }
+.cfg3-enable-select:disabled { opacity: 0.6; cursor: wait; }
 .cfg3-enable-select {
   height: 38px;
   min-width: 120px;
@@ -686,6 +690,28 @@
 .sub-empty-state i { font-size: 24px; color: #60a5fa; }
 .sub-empty-title { color: #dbeafe; font-size: 15px; font-weight: 700; }
 .sub-empty-desc { font-size: 12px; line-height: 1.5; }
+.sub-list-skeleton { padding: 8px 0; }
+.sub-skeleton-card {
+  height: 72px;
+  background: rgba(18, 26, 45, 0.6);
+  border: 1px solid rgba(71, 93, 132, 0.25);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+.sub-list-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 16px;
+  color: #ff6b6b;
+  font-size: 13px;
+}
 .sub-rule-item {
   border: 1px solid rgba(71, 93, 132, 0.55);
   background: rgba(12, 20, 38, 0.75);

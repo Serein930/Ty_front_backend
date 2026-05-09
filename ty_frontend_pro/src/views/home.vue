@@ -38,8 +38,12 @@
       <TrendChart
         :type-filter="trendTypeFilter"
         :range-filter="trendRangeFilter"
+        :trend-data="activeTrendData"
+        :trend-loading="trendLoading"
+        :trend-error="trendError"
         @update:typeFilter="trendTypeFilter = $event"
         @update:rangeFilter="trendRangeFilter = $event"
+        @retry="fetchIntelligenceTrend"
       />
 
       <PersonTrackList
@@ -239,6 +243,12 @@ const {
   filteredSaItems,
   saSummary,
   fetchSubscriptionAlertStats,
+
+  // SA 今日情报趋势
+  trendLoading,
+  trendError,
+  activeTrendData,
+  fetchIntelligenceTrend,
 
   // 弹窗状态
   detailVisible,

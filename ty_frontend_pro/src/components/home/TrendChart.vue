@@ -13,35 +13,49 @@
         <option value="12">12小时</option>
       </select>
     </div>
-    <div ref="chartRef" id="trendChart"></div>
+
+    <div class="chart-wrapper">
+      <!-- 图表始终挂载，避免 v-if 销毁 DOM 导致 ECharts 实例丢失 -->
+      <div ref="chartRef" id="trendChart"></div>
+
+      <!-- Loading 遮罩 -->
+      <div v-if="trendLoading" class="trend-loading">
+        <div class="loading-spinner"></div>
+        <span>加载中...</span>
+      </div>
+
+      <!-- Error 遮罩 -->
+      <div v-else-if="trendError" class="trend-error">
+        <span>{{ trendError }}</span>
+        <button class="retry-btn" @click="$emit('retry')">重试</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import * as echarts from 'echarts';
 
 const props = defineProps({
-  typeFilter: {
-    type: String,
-    default: 'all'
-  },
-  rangeFilter: {
-    type: String,
-    default: '24'
-  }
+  typeFilter: { type: String, default: 'all' },
+  rangeFilter: { type: String, default: '24' },
+  trendData: { type: Array, default: () => [] },
+  trendLoading: { type: Boolean, default: false },
+  trendError: { type: String, default: '' }
 });
 
-defineEmits(['update:typeFilter', 'update:rangeFilter']);
+const emit = defineEmits(['update:typeFilter', 'update:rangeFilter', 'retry']);
 
 const chartRef = ref(null);
 let chartInstance = null;
 
 const buildOption = () => {
-  const points = Number(props.rangeFilter);
-  const x = Array.from({ length: points }, (_, i) => `${i}:00`);
-  const base = props.typeFilter === 'all' ? 18 : props.typeFilter === 'black' ? 22 : props.typeFilter === 'fraud' ? 16 : 20;
-  const data = x.map((_, i) => Math.max(3, Math.round(base + Math.sin(i / 2.7) * 6 + (i % 3) * 1.5)));
+  const hours = Number(props.rangeFilter);
+  const x = Array.from({ length: hours }, (_, i) => `${i}:00`);
+  const dataMap = {};
+  (props.trendData || []).forEach(d => { dataMap[d.hour] = d.count; });
+  const data = x.map((_, i) => dataMap[i] || 0);
 
   return {
     grid: { left: 40, right: 20, top: 30, bottom: 30 },
@@ -79,8 +93,17 @@ const buildOption = () => {
 };
 
 const updateChart = () => {
-  if (chartInstance) {
+  if (chartInstance && !chartInstance.isDisposed()) {
     chartInstance.setOption(buildOption(), true);
+  }
+};
+
+const initChart = async () => {
+  await nextTick();
+  if (chartRef.value) {
+    if (chartInstance) chartInstance.dispose();
+    chartInstance = echarts.init(chartRef.value);
+    updateChart();
   }
 };
 
@@ -89,11 +112,8 @@ const handleResize = () => {
 };
 
 onMounted(() => {
-  if (chartRef.value) {
-    chartInstance = echarts.init(chartRef.value);
-    updateChart();
-    window.addEventListener('resize', handleResize);
-  }
+  initChart();
+  window.addEventListener('resize', handleResize);
 });
 
 onBeforeUnmount(() => {
@@ -101,10 +121,77 @@ onBeforeUnmount(() => {
   chartInstance?.dispose();
 });
 
-watch(() => [props.typeFilter, props.rangeFilter], updateChart);
+// 切换时间范围时 X 轴点数变化，需重建 chart
+watch(() => props.rangeFilter, () => {
+  initChart();
+});
 
-defineExpose({
-  resize: handleResize
+// 数据或类型筛选变化时更新
+watch(() => [props.typeFilter, props.trendData], () => {
+  updateChart();
+});
+
+// loading 结束后数据到达，确保 chart 已初始化
+watch(() => props.trendLoading, (loading, wasLoading) => {
+  if (!loading && wasLoading && props.trendData.length) {
+    initChart();
+  }
 });
 </script>
 
+<style scoped>
+.chart-wrapper {
+  position: relative;
+  height: calc(100% - 40px);
+}
+#trendChart {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+}
+.trend-loading,
+.trend-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 20, 40, 0.85);
+  z-index: 2;
+  border-radius: 4px;
+}
+.trend-loading {
+  color: #8c9db5;
+  font-size: 13px;
+  gap: 10px;
+}
+.loading-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(59,130,246,0.25);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.trend-error {
+  color: #ff6b6b;
+  font-size: 13px;
+  gap: 10px;
+}
+.retry-btn {
+  background: transparent;
+  border: 1px solid rgba(255,107,107,0.5);
+  color: #ff6b6b;
+  padding: 4px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.retry-btn:hover {
+  background: rgba(255,107,107,0.1);
+}
+</style>

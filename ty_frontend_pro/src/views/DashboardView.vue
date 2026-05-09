@@ -368,7 +368,14 @@
                 <div class="sub-list-toolbar">
                   <input v-model="subscriptionState.search" class="sub-input sub-search" placeholder="搜索：名称 / 专题 / 负责人 / 分发对象">
                 </div>
-                <div v-if="filteredSubscriptionRules.length === 0" class="sub-empty-state">
+                <div v-if="topicListLoading" class="sub-list-skeleton">
+                  <div v-for="n in 3" :key="'sk-'+n" class="sub-skeleton-card"></div>
+                </div>
+                <div v-else-if="topicListError" class="sub-list-error">
+                  <span>{{ topicListError }}</span>
+                  <button class="chip-btn" @click="fetchTopicList">重试</button>
+                </div>
+                <div v-else-if="filteredSubscriptionRules.length === 0" class="sub-empty-state">
                   <i class="fa-regular fa-folder-open"></i>
                   <div class="sub-empty-title">暂无匹配规则</div>
                   <div class="sub-empty-desc">尝试清空搜索条件，或新建一条订阅规则</div>
@@ -400,12 +407,17 @@
                   <div class="cfg3-toolbar-title">
                     <i class="fa-solid fa-sliders"></i>
                     <span>规则编排工作台</span>
+                    <span v-if="configLoading" class="cfg3-config-loading"><i class="fa-solid fa-spinner fa-spin"></i> 加载配置...</span>
                   </div>
                   <div class="cfg3-toolbar-actions">
                     <button class="cfg3-btn ghost" @click="alertMock('版本历史即将开放')"><i class="fa-solid fa-clock-rotate-left"></i>版本历史</button>
-                    <button class="cfg3-btn danger" @click="deleteSubscriptionRule"><i class="fa-solid fa-trash-can"></i>删除</button>
-                    <button class="cfg3-btn ghost" @click="saveSubscriptionDraft"><i class="fa-solid fa-floppy-disk"></i>保存草稿</button>
-                    <button class="cfg3-btn primary" @click="publishSubscriptionRule"><i class="fa-solid fa-bolt"></i>发布应用</button>
+                    <button class="cfg3-btn danger" :disabled="deletingRule" @click="deleteSubscriptionRule"><i class="fa-solid fa-trash-can"></i>{{ deletingRule ? '删除中...' : '删除' }}</button>
+                    <button class="cfg3-btn ghost" :disabled="savingSubscription" @click="saveSubscriptionDraft">
+                      <i class="fa-solid fa-floppy-disk"></i>{{ savingSubscription ? '保存中...' : '保存草稿' }}
+                    </button>
+                    <button class="cfg3-btn primary" :disabled="savingSubscription" @click="publishSubscriptionRule">
+                      <i class="fa-solid fa-bolt"></i>{{ savingSubscription ? '提交中...' : '发布应用' }}
+                    </button>
                   </div>
                 </div>
 
@@ -430,9 +442,10 @@
                       <span class="cfg3-divider">|</span>
                       状态：{{ selectedSubscriptionRule?.status === 'applied' ? '已发布' : '草稿' }}
                     </p>
+                    <p v-if="saveSubscriptionError" class="cfg3-save-error">{{ saveSubscriptionError }}</p>
                   </div>
                   <div class="cfg3-headline-right">
-                    <select v-model="subscriptionEditor.enabled" class="cfg3-enable-select" :class="subscriptionEditor.enabled ? 'is-enabled' : 'is-disabled'">
+                    <select v-model="subscriptionEditor.enabled" :disabled="toggleLoading" class="cfg3-enable-select" :class="subscriptionEditor.enabled ? 'is-enabled' : 'is-disabled'">
                       <option :value="true">启用</option>
                       <option :value="false">停用</option>
                     </select>
@@ -1042,6 +1055,16 @@ const subscriptionState = reactive({
   modeSwitchPreview: null
 });
 
+const savingSubscription = ref(false);
+const saveSubscriptionError = ref('');
+const topicListLoading = ref(false);
+const topicListError = ref('');
+const configLoading = ref(false);
+const toggleLoading = ref(false);
+const supressEnableWatch = ref(false);
+const deletingRule = ref(false);
+const deletedRuleCodes = new Set();
+
 const subscriptionEditor = reactive({
   name: '',
   owner: '',
@@ -1343,7 +1366,7 @@ onMounted(() => {
 });
 
 // === 3. 基础工具与映射方法 ===
-const availableTopics = computed(() => [...new Set(listData.value.map(item => item.topic))].filter(Boolean));
+const availableTopics = computed(() => SUBSCRIPTION_TOPICS.map(t => t.id));
 const availableRegions = computed(() => [...new Set(listData.value.map(item => getProvince(item.region)))].filter(Boolean));
 
 const getTopicName = (topic) => ({
@@ -1486,7 +1509,7 @@ const toggleRightSidebar = () => state.rightCollapsed = !state.rightCollapsed;
 const switchModule = (module) => {
   state.activeModule = module;
   if (module === 'subscription') {
-    ensureSubscriptionSelection();
+    fetchTopicList();
   }
   if (module !== 'alerts') {
     state.isImmersive = false;
@@ -2226,6 +2249,22 @@ watch(
   { deep: true }
 );
 
+watch(saveSubscriptionError, (val) => {
+  if (val) setTimeout(() => { saveSubscriptionError.value = ''; }, 5000);
+});
+
+watch(() => subscriptionEditor.enabled, async (newVal, oldVal) => {
+  if (supressEnableWatch.value) return;
+  if (newVal === oldVal) return;
+  const rule = selectedSubscriptionRule.value;
+  if (!rule?.rule_code) return;
+  const result = await toggleTopicEnabled(rule.rule_code, newVal);
+  if (!result.success) {
+    subscriptionEditor.enabled = oldVal;
+    alertMock('切换失败：' + result.error);
+  }
+});
+
 const ensureSubscriptionSelection = () => {
   if (!subscriptionRules.value.length) {
     createSubscriptionRule();
@@ -2241,8 +2280,9 @@ const ensureSubscriptionSelection = () => {
 };
 
 const syncSubscriptionEditor = () => {
+  supressEnableWatch.value = true;
   const rule = selectedSubscriptionRule.value;
-  if (!rule) return;
+  if (!rule) { supressEnableWatch.value = false; return; }
   subscriptionEditor.name = rule.name || '';
   subscriptionEditor.owner = rule.owner || '';
   subscriptionEditor.ruleMode = rule.ruleMode || 'basic';
@@ -2273,6 +2313,7 @@ const syncSubscriptionEditor = () => {
   subscriptionEditor.astExpression = rule.astExpression || buildAstExpression(subscriptionEditor.astTree);
   subscriptionEditor.rbacVisibility = rule.rbacVisibility || '仅自己';
   subscriptionEditor.editorIds = rule.editorIds || '';
+  supressEnableWatch.value = false;
 };
 
 const persistSubscriptionEditor = () => {
@@ -2326,9 +2367,16 @@ const validateSubscriptionEditor = () => {
   return '';
 };
 
-const selectSubscriptionRule = (ruleId) => {
+const selectSubscriptionRule = async (ruleId) => {
   subscriptionState.selectedId = ruleId;
   subscriptionState.titleEditing = false;
+
+  const rule = subscriptionRules.value.find(r => r.id === ruleId);
+  if (rule?.rule_code) {
+    const config = await fetchTopicConfig(rule.rule_code);
+    if (config) applyConfigToRule(config);
+  }
+
   syncSubscriptionEditor();
   generateSmartSandboxSample();
 };
@@ -2353,6 +2401,231 @@ const cancelSubscriptionTitleEdit = () => {
   subscriptionEditor.name = subscriptionState.titleBackup;
   subscriptionState.titleEditing = false;
 };
+
+const parseCsv = (str) => (str || '').split(',').map(s => s.trim()).filter(Boolean);
+
+const buildCreateTopicBody = () => {
+  const ed = subscriptionEditor;
+  const body = {
+    rule_name: (ed.name || '').trim(),
+    enabled: ed.enabled ? 1 : 0,
+    status: ed.status || 'draft',
+    mode: ed.ruleMode || 'basic',
+    basic_config: {
+      threat_category: ed.topics || [],
+      risk_level: ed.minSeverity || 'HIGH',
+      risk_score: Number(ed.riskMin || 70),
+      region: parseCsv(ed.regionFocus),
+      entity_tags: parseCsv(ed.bizTagFocus)
+    },
+    governance: {
+      dedupe_key: ed.dedupKey || 'none',
+      dedupe_window: Number(ed.dedupWindow || 30),
+      frequency_hour: Number(ed.rateLimit || 50),
+      excess: ed.overflowAction || 'drop'
+    },
+    delivery: {
+      user_ids: parseCsv(ed.internalUserIds),
+      group_ids: parseCsv(ed.internalGroupIds),
+      dashboard_enabled: ed.externalDashboard ? 1 : 0,
+      webhook_urls: parseCsv(ed.webhookUrls),
+      telegram_ids: parseCsv(ed.telegramIds)
+    },
+    meta: {
+      charge_person: (ed.owner || '').trim(),
+      priority: Number(ed.priority || 50),
+      summary: (ed.note || '').trim(),
+      visible_scope: ed.rbacVisibility || 'private',
+      editor_ids: parseCsv(ed.editorIds)
+    }
+  };
+  if (ed.ruleMode === 'ast') {
+    body.ast_config = normalizeAstTree(ed.astTree);
+  }
+  return body;
+};
+
+const createTopicOnServer = async () => {
+  savingSubscription.value = true;
+  saveSubscriptionError.value = '';
+  try {
+    const body = buildCreateTopicBody();
+    const res = await fetch('/api/topics/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '创建失败');
+    const rule = selectedSubscriptionRule.value;
+    if (rule) {
+      rule.rule_code = json.data?.rule_code || '';
+      rule.created_at = json.data?.created_at || '';
+      rule.updatedAt = json.data?.updated_at || toDateTimeString(new Date());
+    }
+    fetchTopicList();
+    return { success: true, data: json.data };
+  } catch (e) {
+    saveSubscriptionError.value = e.message || '请求失败，请检查网络后重试';
+    return { success: false, error: e.message };
+  } finally {
+    savingSubscription.value = false;
+  }
+};
+
+const applyConfigToRule = (config) => {
+  if (!config) return;
+  const rule = subscriptionRules.value.find(r => r.rule_code === config.rule_code);
+  if (!rule) return;
+
+  rule.name = config.rule_name || rule.name;
+  rule.ruleMode = config.mode || rule.ruleMode;
+  rule.enabled = config.enabled === 1;
+  rule.status = config.status || rule.status;
+  rule.owner = config.meta?.charge_person || rule.owner;
+
+  if (config.basic_config) {
+    rule.topics = config.basic_config.threat_category || [];
+    rule.minSeverity = config.basic_config.risk_level || 'HIGH';
+    rule.riskMin = config.basic_config.risk_score ?? 70;
+    rule.regionFocus = (config.basic_config.region || []).join(',');
+    rule.bizTagFocus = (config.basic_config.entity_tags || []).join(',');
+  }
+
+  if (config.ast_config) {
+    rule.astTree = config.ast_config;
+  }
+
+  if (config.governance) {
+    rule.dedupKey = config.governance.dedupe_key || rule.dedupKey;
+    rule.dedupWindow = config.governance.dedupe_window ?? rule.dedupWindow;
+    rule.rateLimit = config.governance.frequency_hour ?? rule.rateLimit;
+    rule.overflowAction = config.governance.excess || rule.overflowAction;
+  }
+
+  if (config.delivery) {
+    rule.internalUserIds = (config.delivery.user_ids || []).join(',');
+    rule.internalGroupIds = (config.delivery.group_ids || []).join(',');
+    rule.externalDashboard = config.delivery.dashboard_enabled === 1;
+    rule.webhookUrls = (config.delivery.webhook_urls || []).join(',');
+    rule.telegramIds = (config.delivery.telegram_ids || []).join(',');
+    const ch = [];
+    if (config.delivery.dashboard_enabled === 1) ch.push('Dashboard');
+    if ((config.delivery.webhook_urls || []).length) ch.push('Webhook');
+    if ((config.delivery.telegram_ids || []).length) ch.push('Telegram');
+    if (ch.length) rule.channels = ch;
+  }
+
+  if (config.meta) {
+    rule.priority = config.meta.priority ?? rule.priority;
+    rule.note = config.meta.summary || rule.note;
+    rule.rbacVisibility = config.meta.visible_scope || rule.rbacVisibility;
+    rule.editorIds = (config.meta.editor_ids || []).join(',');
+  }
+
+  rule.created_at = config.created_at || '';
+  rule.updatedAt = config.updated_at || config.final_syn_time || rule.updatedAt;
+};
+
+const fetchTopicConfig = async (ruleCode) => {
+  if (!ruleCode) return null;
+  configLoading.value = true;
+  try {
+    const res = await fetch(`/api/topics/${ruleCode}/config`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '获取配置失败');
+    return json.data?.config || null;
+  } catch (e) {
+    console.error('获取专题配置失败:', e);
+    return null;
+  } finally {
+    configLoading.value = false;
+  }
+};
+
+const toggleTopicEnabled = async (ruleCode, enabled) => {
+  toggleLoading.value = true;
+  try {
+    const res = await fetch(`/api/topics/${ruleCode}/toggle`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled ? 1 : 0 })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '切换失败');
+
+    const rule = subscriptionRules.value.find(r => r.rule_code === ruleCode);
+    if (rule) rule.enabled = enabled;
+
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    toggleLoading.value = false;
+  }
+};
+
+const mapTopicToRule = (item) => ({
+  id: item.rule_code || '',
+  rule_code: item.rule_code || '',
+  name: item.rule_name || '未命名规则',
+  owner: item.charge_person || '',
+  ruleMode: 'basic',
+  enabled: item.enabled === 1,
+  status: item.status || 'draft',
+  topics: [],
+  minSeverity: 'HIGH',
+  riskMin: 70,
+  sources: ['Telegram'],
+  channels: ['Dashboard'],
+  schedule: '每 15 分钟',
+  desc: item.summary || '',
+  regionFocus: '',
+  bizTagFocus: '',
+  dedupKey: '不过滤 (每条独立推送)',
+  dedupWindow: 30,
+  rateLimit: 50,
+  overflowAction: '静默丢弃',
+  internalUserIds: '',
+  internalGroupIds: 'g_riskOps',
+  externalDashboard: true,
+  webhookUrls: '',
+  telegramIds: '@ops_channel',
+  priority: 50,
+  note: '',
+  astExpression: '',
+  astTree: createAstGroup('AND'),
+  rbacVisibility: '仅自己',
+  editorIds: '',
+  updatedAt: item.final_syn_time || toDateTimeString(new Date())
+});
+
+const fetchTopicList = async () => {
+  topicListLoading.value = true;
+  topicListError.value = '';
+  try {
+    const res = await fetch('/api/topics/list');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '获取专题列表失败');
+    const items = json.data || [];
+    if (items.length) {
+      subscriptionRules.value = items
+        .filter(item => !deletedRuleCodes.has(item.rule_code))
+        .map(mapTopicToRule);
+      subscriptionState.selectedId = subscriptionRules.value[0].id;
+    }
+  } catch (e) {
+    topicListError.value = e.message || '请求失败';
+  } finally {
+    topicListLoading.value = false;
+  }
+  ensureSubscriptionSelection();
+};
+
 
 const createSubscriptionRule = () => {
   const id = `sub-${Date.now()}`;
@@ -2394,7 +2667,7 @@ const createSubscriptionRule = () => {
   syncSubscriptionEditor();
 };
 
-const saveSubscriptionDraft = () => {
+const saveSubscriptionDraft = async () => {
   const err = validateSubscriptionEditor();
   if (err) {
     alertMock(err);
@@ -2403,11 +2676,15 @@ const saveSubscriptionDraft = () => {
   const rule = persistSubscriptionEditor();
   if (!rule) return;
   rule.status = 'draft';
-  generateSmartSandboxSample();
-  alertMock('订阅规则草稿已保存');
+  saveSubscriptionError.value = '';
+  const result = await createTopicOnServer();
+  if (result.success) {
+    generateSmartSandboxSample();
+    alertMock('订阅规则草稿已保存，专题已创建');
+  }
 };
 
-const publishSubscriptionRule = () => {
+const publishSubscriptionRule = async () => {
   const err = validateSubscriptionEditor();
   if (err) {
     alertMock(err);
@@ -2416,14 +2693,40 @@ const publishSubscriptionRule = () => {
   const rule = persistSubscriptionEditor();
   if (!rule) return;
   rule.status = 'applied';
-  alertMock(`订阅规则已发布：将对 ${rule.topics.map(getTopicName).join(' / ')} 执行监测`);
+  saveSubscriptionError.value = '';
+  const result = await createTopicOnServer();
+  if (result.success) {
+    alertMock(`订阅规则已发布：将对 ${rule.topics.map(getTopicName).join(' / ')} 执行监测`);
+  }
 };
 
-const deleteSubscriptionRule = () => {
+const deleteSubscriptionRule = async () => {
   const rule = selectedSubscriptionRule.value;
   if (!rule) return;
   if (!confirm('确定删除当前订阅规则吗？')) return;
-  subscriptionRules.value = subscriptionRules.value.filter((item) => item.id !== rule.id);
+
+  const ruleCode = rule.rule_code;
+  if (ruleCode) {
+    deletingRule.value = true;
+    try {
+      const res = await fetch(`/api/topics/${ruleCode}`, { method: 'DELETE' });
+      if (res.status !== 404 && !res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      if (res.status !== 404) {
+        const json = await res.json();
+        if (json.code !== 200) throw new Error(json.msg || '删除失败');
+      }
+      deletedRuleCodes.add(ruleCode);
+    } catch (e) {
+      alertMock('删除失败：' + (e.message || '请重试'));
+      deletingRule.value = false;
+      return;
+    }
+    deletingRule.value = false;
+  }
+
+  subscriptionRules.value = subscriptionRules.value.filter(item => item.id !== rule.id);
   subscriptionState.selectedId = subscriptionRules.value[0]?.id || '';
   ensureSubscriptionSelection();
 };
@@ -2538,7 +2841,7 @@ const generateDonutData = (dataKey, nameResolver) => {
 const topicChartData = computed(() => generateDonutData('topic', getTopicName));
 const industryChartData = computed(() => generateDonutData('industry', getIndustryName));
 
-ensureSubscriptionSelection();
+fetchTopicList();
 </script>
 
 

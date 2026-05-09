@@ -21,6 +21,10 @@ export default defineConfig({
       '/api/sa': {
         target: 'http://localhost:8888',
         changeOrigin: true
+      },
+      '/api/topics': {
+        target: 'http://localhost:8888',
+        changeOrigin: true
       }
     }
   }

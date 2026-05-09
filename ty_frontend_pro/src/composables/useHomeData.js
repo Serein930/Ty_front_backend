@@ -51,7 +51,7 @@ export function useHomeData() {
   const warningStatusFilter = ref('all');
   const selectedType = ref('all');
   const statsTimeFilter = ref('24h');
-  const trendTypeFilter = ref('all');
+  const trendTypeFilter = ref('black');
   const trendRangeFilter = ref('24');
 
   // 案件数据
@@ -141,6 +141,50 @@ export function useHomeData() {
       saStatsTotal.value = null;
     } finally {
       saStatsLoading.value = false;
+    }
+  }
+
+  // ===== SA 今日情报趋势 API =====
+  const trendItems = ref([]);
+  const trendTotalToday = ref([]);
+  const trendTotal12h = ref([]);
+  const trendCurrentTime = ref('');
+  const trendLoading = ref(false);
+  const trendError = ref('');
+
+  const filteredTrendItems = computed(() => {
+    if (trendTypeFilter.value === 'all') return trendItems.value;
+    const keywords = typeKeywords[trendTypeFilter.value] || [];
+    return trendItems.value.filter(item =>
+      keywords.some(kw => (item.rule_name || '').includes(kw))
+    );
+  });
+
+  const activeTrendData = computed(() => {
+    if (trendRangeFilter.value === '12') return trendTotal12h.value;
+    return trendTotalToday.value;
+  });
+
+  async function fetchIntelligenceTrend() {
+    trendLoading.value = true;
+    trendError.value = '';
+    try {
+      const res = await fetch('/api/sa/intelligence/trend');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.code !== 200) throw new Error(json.msg || 'API error');
+      trendItems.value = json.data?.items || [];
+      trendTotalToday.value = json.data?.total_today_hourly || [];
+      trendTotal12h.value = json.data?.total_last_12_hours_hourly || [];
+      trendCurrentTime.value = json.data?.current_time || '';
+    } catch (e) {
+      trendError.value = e.message || '请求失败';
+      trendItems.value = [];
+      trendTotalToday.value = [];
+      trendTotal12h.value = [];
+      trendCurrentTime.value = '';
+    } finally {
+      trendLoading.value = false;
     }
   }
 
@@ -492,6 +536,7 @@ export function useHomeData() {
     timeTimer = setInterval(updateNowTime, 1000);
     document.addEventListener('click', hideFloatingMenus);
     fetchSubscriptionAlertStats();
+    fetchIntelligenceTrend();
   });
 
   onUnmounted(() => {
@@ -579,6 +624,17 @@ export function useHomeData() {
     filteredSaItems,
     saSummary,
     fetchSubscriptionAlertStats,
+
+    // SA 今日情报趋势
+    trendItems,
+    trendTotalToday,
+    trendTotal12h,
+    trendCurrentTime,
+    trendLoading,
+    trendError,
+    filteredTrendItems,
+    activeTrendData,
+    fetchIntelligenceTrend,
 
     // 方法
     applySubscription,
