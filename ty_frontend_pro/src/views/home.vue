@@ -26,6 +26,11 @@
         :now-time-display="nowTimeDisplay"
         :selected-type="selectedType"
         :time-filter="statsTimeFilter"
+        :sa-items="saStatsItems"
+        :sa-summary="saSummary"
+        :sa-loading="saStatsLoading"
+        :sa-error="saStatsError"
+        :filtered-sa-items="filteredSaItems"
         @update:selectedType="selectedType = $event"
         @update:timeFilter="statsTimeFilter = $event"
       />
@@ -225,6 +230,15 @@ const {
   monitoredEntities,
   countryCoordinates,
   orgRows,
+
+  // SA 告警统计
+  saStatsItems,
+  saStatsTotal,
+  saStatsLoading,
+  saStatsError,
+  filteredSaItems,
+  saSummary,
+  fetchSubscriptionAlertStats,
 
   // 弹窗状态
   detailVisible,

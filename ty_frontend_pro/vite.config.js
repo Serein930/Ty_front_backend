@@ -17,6 +17,10 @@ export default defineConfig({
       '/api/rag': {
         target: 'http://localhost:8888',
         changeOrigin: true
+      },
+      '/api/sa': {
+        target: 'http://localhost:8888',
+        changeOrigin: true
       }
     }
   }

@@ -74,13 +74,75 @@ export function useHomeData() {
     });
   });
 
-  // 统计数据
+  // 统计数据（mock 保留兼容）
   const warningCount = computed(() => filteredWarnings.value.filter(w => w.status !== '已结案').length);
   const handledCount = computed(() => filteredWarnings.value.filter(w => w.status === '已结案').length);
   const totalCount = computed(() => {
     const scale = statsTimeFilter.value === '24h' ? 4 : statsTimeFilter.value === '7d' ? 28 : 110;
     return filteredWarnings.value.length * scale;
   });
+
+  // ===== SA 告警统计 API =====
+  const saStatsItems = ref([]);
+  const saStatsTotal = ref(null);
+  const saStatsLoading = ref(false);
+  const saStatsError = ref('');
+
+  // 客户端类型筛选关键词映射
+  const typeKeywords = {
+    black: ['黑灰产', '洗钱', '暗网', '卡料', '黑市'],
+    fraud: ['诈骗', '欺诈', '仿冒', '钓鱼'],
+    attack: ['攻击', '漏洞', '扫描', '渗透', '入侵']
+  };
+
+  // 根据类型筛选后的 items
+  const filteredSaItems = computed(() => {
+    if (selectedType.value === 'all') return saStatsItems.value;
+    const keywords = typeKeywords[selectedType.value] || [];
+    return saStatsItems.value.filter(item =>
+      keywords.some(kw => (item.rule_name || '').includes(kw))
+    );
+  });
+
+  // 根据时间筛选计算汇总
+  const saSummary = computed(() => {
+    const items = filteredSaItems.value;
+    if (!items.length) return { read: 0, unread: 0, total: 0 };
+    let timeKey;
+    switch (statsTimeFilter.value) {
+      case '7d': timeKey = 'last_7_days'; break;
+      case '30d': timeKey = 'last_30_days'; break;
+      default: timeKey = 'all_time';
+    }
+    let read = 0, unread = 0;
+    items.forEach(item => {
+      const stat = item[timeKey];
+      if (stat) {
+        read += stat.read_count || 0;
+        unread += stat.unread_count || 0;
+      }
+    });
+    return { read, unread, total: read + unread };
+  });
+
+  async function fetchSubscriptionAlertStats() {
+    saStatsLoading.value = true;
+    saStatsError.value = '';
+    try {
+      const res = await fetch('/api/sa/subscription/alert/stats');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.code !== 200) throw new Error(json.msg || 'API error');
+      saStatsItems.value = json.data?.items || [];
+      saStatsTotal.value = json.data || null;
+    } catch (e) {
+      saStatsError.value = e.message || '请求失败';
+      saStatsItems.value = [];
+      saStatsTotal.value = null;
+    } finally {
+      saStatsLoading.value = false;
+    }
+  }
 
   // 重点人物数据
   const hotPersons = ref([
@@ -429,6 +491,7 @@ export function useHomeData() {
     updateNowTime();
     timeTimer = setInterval(updateNowTime, 1000);
     document.addEventListener('click', hideFloatingMenus);
+    fetchSubscriptionAlertStats();
   });
 
   onUnmounted(() => {
@@ -507,6 +570,15 @@ export function useHomeData() {
     filteredOrgRows,
     personsTableRows,
     countryEventRows,
+
+    // SA 告警统计
+    saStatsItems,
+    saStatsTotal,
+    saStatsLoading,
+    saStatsError,
+    filteredSaItems,
+    saSummary,
+    fetchSubscriptionAlertStats,
 
     // 方法
     applySubscription,
