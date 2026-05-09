@@ -1063,7 +1063,15 @@ const configLoading = ref(false);
 const toggleLoading = ref(false);
 const supressEnableWatch = ref(false);
 const deletingRule = ref(false);
-const deletedRuleCodes = new Set();
+const DELETED_STORAGE_KEY = 'deleted_subscription_rule_codes';
+const loadDeletedCodes = () => {
+  try { return new Set(JSON.parse(localStorage.getItem(DELETED_STORAGE_KEY) || '[]')); }
+  catch { return new Set(); }
+};
+const saveDeletedCodes = (codes) => {
+  localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify([...codes]));
+};
+const deletedRuleCodes = loadDeletedCodes();
 
 const subscriptionEditor = reactive({
   name: '',
@@ -2718,6 +2726,7 @@ const deleteSubscriptionRule = async () => {
         if (json.code !== 200) throw new Error(json.msg || '删除失败');
       }
       deletedRuleCodes.add(ruleCode);
+      saveDeletedCodes(deletedRuleCodes);
     } catch (e) {
       alertMock('删除失败：' + (e.message || '请重试'));
       deletingRule.value = false;
