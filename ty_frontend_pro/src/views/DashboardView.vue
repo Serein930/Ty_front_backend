@@ -120,6 +120,15 @@
               </div>
             </div>
 
+            <div v-if="alertListLoading" class="alert-list-loading">
+              <div class="loading-spinner"></div>
+              <span>加载告警列表...</span>
+            </div>
+            <div v-else-if="alertListError" class="alert-list-error">
+              <span>{{ alertListError }}</span>
+              <button class="retry-btn" @click="fetchAlertList">重试</button>
+            </div>
+            <template v-else>
             <div class="list-container">
               <div v-for="item in paginatedList" :key="item.id" class="list-item-wrapper" style="margin-bottom: 10px;">
                 <div class="list-item unified-card" :class="{ 'read': item.read, 'selected': item.selected, 'is-telegram': item.source === 'Telegram' }" @click="markAsRead(item)">
@@ -204,8 +213,9 @@
               <i class="fa-solid fa-angle-right page-arrow" @click="changePage(state.pagination.currentPage + 1)"></i>
               <div class="page-info">第 {{ state.pagination.currentPage }}/{{ totalPages }} 页，共 {{ filteredList.length }} 条数据</div>
             </div>
-          </div> 
-          
+          </template>
+          </div>
+
           <div class="side-toggle-btn right-toggle-btn" :class="{ 'collapsed': state.rightCollapsed }" @click="toggleRightSidebar" title="收起/展开分析栏">
             <i class="fa-solid" :class="state.rightCollapsed ? 'fa-angle-left' : 'fa-angle-right'"></i>
           </div>
@@ -330,7 +340,15 @@
 
             <div class="panel board-panel">
               <div class="panel-line-title"><i class="fa-regular fa-heart"></i> 我的关注清单</div>
-              <div v-if="followedAlerts.length === 0" style="padding: 24px; color: var(--text-dim);">暂无关注线索，请在告警信息列表点击“关注”按钮。</div>
+              <div v-if="followLoading" class="alert-list-loading">
+                <div class="loading-spinner"></div>
+                <span>加载关注列表...</span>
+              </div>
+              <div v-else-if="followError" class="alert-list-error">
+                <span>{{ followError }}</span>
+                <button class="retry-btn" @click="fetchFollowList">重试</button>
+              </div>
+              <div v-else-if="followedAlerts.length === 0" style="padding: 24px; color: var(--text-dim);">暂无关注线索，请在告警信息列表点击"关注"按钮。</div>
               <div v-else class="topic-list-grid">
                 <div v-for="item in followedAlerts" :key="item.id" class="topic-card" @click="openFollowedAlertInAlerts(item)">
                   <div class="topic-head">
@@ -410,7 +428,7 @@
                     <span v-if="configLoading" class="cfg3-config-loading"><i class="fa-solid fa-spinner fa-spin"></i> 加载配置...</span>
                   </div>
                   <div class="cfg3-toolbar-actions">
-                    <button class="cfg3-btn ghost" @click="alertMock('版本历史即将开放')"><i class="fa-solid fa-clock-rotate-left"></i>版本历史</button>
+                    <button class="cfg3-btn ghost" @click="openHistory"><i class="fa-solid fa-clock-rotate-left"></i>版本历史</button>
                     <button class="cfg3-btn danger" :disabled="deletingRule" @click="deleteSubscriptionRule"><i class="fa-solid fa-trash-can"></i>{{ deletingRule ? '删除中...' : '删除' }}</button>
                     <button class="cfg3-btn ghost" :disabled="savingSubscription" @click="saveSubscriptionDraft">
                       <i class="fa-solid fa-floppy-disk"></i>{{ savingSubscription ? '保存中...' : '保存草稿' }}
@@ -421,6 +439,57 @@
                   </div>
                 </div>
 
+                <!-- 版本历史面板 -->
+                <template v-if="subscriptionState.showHistory">
+                  <div class="cfg3-history-head">
+                    <button class="cfg3-btn ghost" @click="closeHistory">
+                      <i class="fa-solid fa-arrow-left"></i> 返回编辑
+                    </button>
+                    <span class="cfg3-history-title">
+                      <i class="fa-solid fa-clock-rotate-left"></i>
+                      版本历史 - {{ selectedSubscriptionRule?.name || '' }}
+                    </span>
+                  </div>
+
+                  <div v-if="historyLoading" class="cfg3-history-loading">
+                    <div class="loading-spinner"></div>
+                    <span>加载历史记录...</span>
+                  </div>
+                  <div v-else-if="historyError" class="cfg3-history-error">
+                    <span>{{ historyError }}</span>
+                    <button class="retry-btn" @click="openHistory">重试</button>
+                  </div>
+                  <div v-else-if="!historyList.length" class="cfg3-history-empty">
+                    <i class="fa-solid fa-inbox"></i>
+                    <span>暂无历史版本记录</span>
+                  </div>
+                  <div v-else class="cfg3-history-list">
+                    <div v-for="item in historyList" :key="item.history_id" class="cfg3-history-item">
+                      <div class="cfg3-history-item-head" @click="historyExpandedId = historyExpandedId === item.history_id ? null : item.history_id">
+                        <span class="cfg3-history-badge" :class="'action-' + item.action">
+                          {{ item.action === 'apply' ? '已发布' : item.action === 'save_draft' ? '草稿保存' : item.action }}
+                        </span>
+                        <span class="cfg3-history-operator">{{ item.operator }}</span>
+                        <span class="cfg3-history-time">{{ item.created_at }}</span>
+                        <i class="fa-solid" :class="historyExpandedId === item.history_id ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                      </div>
+                      <pre v-if="historyExpandedId === item.history_id" class="cfg3-json-preview">{{ JSON.stringify(item.snapshot_data, null, 2) }}</pre>
+                      <div v-if="historyExpandedId === item.history_id" class="cfg3-history-actions">
+                        <button
+                          class="cfg3-btn ghost cfg3-rollback-btn"
+                          :disabled="rollbackLoading"
+                          @click.stop="confirmRollback(item)"
+                        >
+                          <i class="fa-solid fa-rotate-left"></i>
+                          {{ rollbackLoading ? '回滚中...' : '回滚至此版本' }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- 规则编辑表单 -->
+                <template v-else>
                 <div class="cfg3-headline">
                   <div>
                     <div class="cfg3-title-edit">
@@ -686,6 +755,7 @@
                     </div>
                   </div>
                 </div>
+              </template>
               </section>
 
               <section class="cfg3-side panel board-panel">
@@ -762,7 +832,16 @@
 
             <div class="panel board-panel">
               <div class="panel-line-title"><i class="fa-solid fa-list-ul"></i> 专题列表管理</div>
-              <div class="topic-list-grid">
+              <div v-if="statsLoading" class="alert-list-loading">
+                <div class="loading-spinner"></div>
+                <span>加载专题统计...</span>
+              </div>
+              <div v-else-if="statsError" class="alert-list-error">
+                <span>{{ statsError }}</span>
+                <button class="retry-btn" @click="fetchRuleNameStats">重试</button>
+              </div>
+              <div v-else-if="topicList.length === 0" style="padding: 24px; color: var(--text-dim);">暂无专题数据</div>
+              <div v-else class="topic-list-grid">
                 <div v-for="topic in topicList" :key="topic.id" class="topic-card" @click="openTopicInAlerts(topic)">
                   <div class="topic-head">
                     <div class="topic-name">{{ topic.name }}</div>
@@ -1001,6 +1080,14 @@ const initialListData = (() => {
 
 const listData = ref(JSON.parse(JSON.stringify(initialListData)));
 
+const followListData = ref([]);
+const followLoading = ref(false);
+const followError = ref('');
+
+const ruleNameStats = ref([]);
+const statsLoading = ref(false);
+const statsError = ref('');
+
 const topicList = ref([
   { id: 1, name: '毒品交易链路专题', owner: '刘洋', keywordCount: 128, sourceCount: 6, hits: 1362, status: '运行中', lastRun: '2026-03-29 10:18', desc: '围绕暗语、物流与收款地址识别涉毒交易组织链路。' },
   { id: 2, name: '跨境走私热点专题', owner: '陈昕', keywordCount: 97, sourceCount: 5, hits: 978, status: '运行中', lastRun: '2026-03-29 09:42', desc: '重点关注沿海港口、边境节点、匿名联络渠道异常。' },
@@ -1052,17 +1139,25 @@ const subscriptionState = reactive({
   titleBackup: '',
   modeModalOpen: false,
   pendingRuleMode: '',
-  modeSwitchPreview: null
+  modeSwitchPreview: null,
+  showHistory: false
 });
 
 const savingSubscription = ref(false);
 const saveSubscriptionError = ref('');
 const topicListLoading = ref(false);
 const topicListError = ref('');
+const alertListLoading = ref(false);
+const alertListError = ref('');
 const configLoading = ref(false);
 const toggleLoading = ref(false);
 const supressEnableWatch = ref(false);
 const deletingRule = ref(false);
+const historyLoading = ref(false);
+const historyError = ref('');
+const historyList = ref([]);
+const historyExpandedId = ref(null);
+const rollbackLoading = ref(false);
 const DELETED_STORAGE_KEY = 'deleted_subscription_rule_codes';
 const loadDeletedCodes = () => {
   try { return new Set(JSON.parse(localStorage.getItem(DELETED_STORAGE_KEY) || '[]')); }
@@ -1349,7 +1444,7 @@ const filters = reactive({
 });
 
 const followedAlerts = computed(() => {
-  return listData.value.filter(item => item.followed && !item.falsePositive);
+  return followListData.value.filter(item => !item.falsePositive);
 });
 
 const followSummary = computed(() => ({
@@ -1363,7 +1458,7 @@ const topicSummary = computed(() => ({
   total: topicList.value.length,
   running: topicList.value.filter(item => item.status === '运行中').length,
   archived: topicList.value.filter(item => item.status === '归档').length,
-  totalHits: topicList.value.reduce((sum, item) => sum + item.hits, 0)
+  totalHits: topicList.value.reduce((sum, item) => sum + (typeof item.hits === 'number' ? item.hits : 0), 0)
 }));
 
 // 关闭弹窗和下拉的全局监听
@@ -1519,11 +1614,151 @@ const switchModule = (module) => {
   if (module === 'subscription') {
     fetchTopicList();
   }
+  if (module === 'alerts') {
+    fetchAlertList();
+  }
+  if (module === 'follow') {
+    fetchFollowList();
+  }
+  if (module === 'topicList') {
+    fetchRuleNameStats();
+  }
   if (module !== 'alerts') {
     state.isImmersive = false;
     state.leftCollapsed = false;
     state.rightCollapsed = false;
     state.isFilterCollapsed = false;
+  }
+};
+
+const SEVERITY_MAP = { 'CRITICAL': 'high', 'HIGH': 'high', 'MEDIUM': 'mid', 'LOW': 'low' };
+
+const mapAlertFields = (alert, index) => ({
+  id: alert.event_id || `alert-${index}`,
+  title: alert.title || '',
+  content: alert.text_preview || '',
+  risk: SEVERITY_MAP[alert.severity] || 'low',
+  source: alert.platform || '',
+  sourceType: alert.source_type || '',
+  siteName: alert.site_name || '',
+  author: alert.author_name || '',
+  hitRule: alert.rule_code || '',
+  hitRules: alert.rule_code ? [alert.rule_code] : [],
+  date: alert.report_time || '',
+  region: alert.region || '',
+  topic: alert.topic || '',
+  industry: alert.industry || '',
+  read: alert.read_status === 1,
+  followed: alert.is_monitor_target === 1,
+  falsePositive: alert.false_positive === 1,
+  entities: (alert.entity_tags || []).map(tag => ({ type: 'tag', value: tag })),
+  selected: false,
+  isExpanded: false,
+  children: [],
+  stats: { fwd: 0, cmt: 0, sim: 0 },
+  chatMeta: null
+});
+
+const mapAlertToItem = (alert, index) => mapAlertFields(alert, index);
+const mapFollowItem = (alert, index) => mapAlertFields(alert, index);
+
+const fetchAlertList = async () => {
+  alertListLoading.value = true;
+  alertListError.value = '';
+  try {
+    const res = await fetch('/api/topics/alert/list_all');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '获取告警列表失败');
+    listData.value = (json.data || []).map(mapAlertToItem);
+  } catch (e) {
+    alertListError.value = e.message || '请求失败';
+  } finally {
+    alertListLoading.value = false;
+  }
+};
+
+const fetchFollowList = async () => {
+  followLoading.value = true;
+  followError.value = '';
+  try {
+    const res = await fetch('/api/topics/alert/monitor_targets');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '获取关注列表失败');
+    followListData.value = (json.data || []).map(mapFollowItem);
+    // 合并本地已关注但后端尚未返回的条目（处理 monitor 接口异步延迟）
+    const localFollowed = listData.value.filter(item => item.followed && !item.falsePositive);
+    for (const item of localFollowed) {
+      if (!followListData.value.find(f => f.id === item.id)) {
+        followListData.value.unshift(item);
+      }
+    }
+  } catch (e) {
+    followError.value = e.message || '请求失败';
+  } finally {
+    followLoading.value = false;
+  }
+};
+
+const fetchAlertsByTopic = async (threatCategory) => {
+  alertListLoading.value = true;
+  alertListError.value = '';
+  try {
+    const url = `/api/topics/alert/list?threat_category=${encodeURIComponent(threatCategory)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '获取专题告警列表失败');
+    listData.value = (json.data || []).map(mapAlertToItem);
+  } catch (e) {
+    alertListError.value = e.message || '请求失败';
+  } finally {
+    alertListLoading.value = false;
+  }
+};
+
+const fetchAlertsByTopicName = async (topicName) => {
+  alertListLoading.value = true;
+  alertListError.value = '';
+  try {
+    const url = `/api/topics/alert/list_by_topic_name?name=${encodeURIComponent(topicName)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '获取专题告警列表失败');
+    listData.value = (json.data || []).map(mapAlertToItem);
+  } catch (e) {
+    alertListError.value = e.message || '请求失败';
+  } finally {
+    alertListLoading.value = false;
+  }
+};
+
+const fetchRuleNameStats = async () => {
+  statsLoading.value = true;
+  statsError.value = '';
+  try {
+    const res = await fetch('/api/topics/alert/rule_name_stats');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '获取专题统计失败');
+    ruleNameStats.value = (json.data || []).map((item, index) => ({
+      id: index + 1,
+      name: item.rule_name,
+      hits: item.count,
+      owner: '-',
+      keywordCount: '-',
+      sourceCount: '-',
+      status: '运行中',
+      lastRun: '-',
+      desc: ''
+    }));
+    topicList.value = ruleNameStats.value;
+  } catch (e) {
+    statsError.value = e.message || '请求失败';
+  } finally {
+    statsLoading.value = false;
   }
 };
 
@@ -1557,8 +1792,8 @@ const openFollowedAlertInAlerts = (item) => {
 const openTopicInAlerts = (topic) => {
   resetAlertFiltersByPreset();
   state.activeModule = 'alerts';
-  state.searchQuery = topic.name;
   filters.topic = getTopicCodeByName(topic.name);
+  fetchAlertsByTopicName(topic.name);
 };
 
 const filteredSubscriptionRules = computed(() => {
@@ -2273,6 +2508,37 @@ watch(() => subscriptionEditor.enabled, async (newVal, oldVal) => {
   }
 });
 
+const openHistory = async () => {
+  const rule = selectedSubscriptionRule.value;
+  if (!rule?.rule_code) {
+    alertMock('请先选择一个已创建的专题');
+    return;
+  }
+  subscriptionState.showHistory = true;
+  await fetchTopicHistory(rule.rule_code);
+};
+
+const closeHistory = () => {
+  subscriptionState.showHistory = false;
+  historyList.value = [];
+  historyError.value = '';
+  historyExpandedId.value = null;
+};
+
+const confirmRollback = async (historyItem) => {
+  const rule = selectedSubscriptionRule.value;
+  if (!rule?.rule_code) return;
+  if (!confirm(`确认回滚到该版本吗？\n\n操作：${historyItem.action}\n时间：${historyItem.created_at}\n\n当前未保存的编辑内容将丢失。`)) return;
+
+  const result = await rollbackToHistory(rule.rule_code, historyItem.history_id);
+  if (result.success && result.data) {
+    applyConfigToRule(result.data);
+    syncSubscriptionEditor();
+    closeHistory();
+    alertMock('已回滚至指定版本');
+  }
+};
+
 const ensureSubscriptionSelection = () => {
   if (!subscriptionRules.value.length) {
     createSubscriptionRule();
@@ -2412,9 +2678,33 @@ const cancelSubscriptionTitleEdit = () => {
 
 const parseCsv = (str) => (str || '').split(',').map(s => s.trim()).filter(Boolean);
 
+const DEDUP_KEY_MAP = {
+  '不过滤 (每条独立推送)': 'none',
+  '作者+主题': 'author_topic',
+  '正文哈希': 'content_hash',
+  '内容哈希': 'content_hash',
+  '实体聚合': 'entity',
+  '来源账号': 'source_handle'
+};
+const OVERFLOW_ACTION_MAP = {
+  '静默丢弃': 'drop',
+  '摘要合并': 'digest',
+  '降级推送': 'degrade'
+};
+const VISIBILITY_MAP = {
+  '仅自己': 'private',
+  '本组': 'team',
+  '全局': 'global'
+};
+const DEDUP_KEY_REVERSE = { 'none': '不过滤 (每条独立推送)', 'content_hash': '正文哈希', 'author_topic': '作者+主题', 'entity': '实体聚合', 'source_handle': '来源账号' };
+const OVERFLOW_REVERSE = { 'drop': '静默丢弃', 'digest': '摘要合并', 'degrade': '降级推送' };
+const VISIBILITY_REVERSE = { 'private': '仅自己', 'team': '本组', 'global': '全局' };
+
 const buildCreateTopicBody = () => {
   const ed = subscriptionEditor;
+  const rule = selectedSubscriptionRule.value;
   const body = {
+    rule_id: rule?.rule_code || '',
     rule_name: (ed.name || '').trim(),
     enabled: ed.enabled ? 1 : 0,
     status: ed.status || 'draft',
@@ -2427,10 +2717,10 @@ const buildCreateTopicBody = () => {
       entity_tags: parseCsv(ed.bizTagFocus)
     },
     governance: {
-      dedupe_key: ed.dedupKey || 'none',
+      dedupe_key: DEDUP_KEY_MAP[ed.dedupKey] || 'none',
       dedupe_window: Number(ed.dedupWindow || 30),
       frequency_hour: Number(ed.rateLimit || 50),
-      excess: ed.overflowAction || 'drop'
+      excess: OVERFLOW_ACTION_MAP[ed.overflowAction] || 'drop'
     },
     delivery: {
       user_ids: parseCsv(ed.internalUserIds),
@@ -2443,7 +2733,7 @@ const buildCreateTopicBody = () => {
       charge_person: (ed.owner || '').trim(),
       priority: Number(ed.priority || 50),
       summary: (ed.note || '').trim(),
-      visible_scope: ed.rbacVisibility || 'private',
+      visible_scope: VISIBILITY_MAP[ed.rbacVisibility] || 'private',
       editor_ids: parseCsv(ed.editorIds)
     }
   };
@@ -2453,12 +2743,12 @@ const buildCreateTopicBody = () => {
   return body;
 };
 
-const createTopicOnServer = async () => {
+const createTopicOnServer = async (action) => {
   savingSubscription.value = true;
   saveSubscriptionError.value = '';
   try {
     const body = buildCreateTopicBody();
-    const res = await fetch('/api/topics/create', {
+    const res = await fetch(`/api/topics/?action=${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -2506,10 +2796,12 @@ const applyConfigToRule = (config) => {
   }
 
   if (config.governance) {
-    rule.dedupKey = config.governance.dedupe_key || rule.dedupKey;
+    const rawDedup = config.governance.dedupe_key || '';
+    rule.dedupKey = DEDUP_KEY_REVERSE[rawDedup] || rawDedup || rule.dedupKey;
     rule.dedupWindow = config.governance.dedupe_window ?? rule.dedupWindow;
     rule.rateLimit = config.governance.frequency_hour ?? rule.rateLimit;
-    rule.overflowAction = config.governance.excess || rule.overflowAction;
+    const rawOverflow = config.governance.excess || '';
+    rule.overflowAction = OVERFLOW_REVERSE[rawOverflow] || rawOverflow || rule.overflowAction;
   }
 
   if (config.delivery) {
@@ -2528,7 +2820,8 @@ const applyConfigToRule = (config) => {
   if (config.meta) {
     rule.priority = config.meta.priority ?? rule.priority;
     rule.note = config.meta.summary || rule.note;
-    rule.rbacVisibility = config.meta.visible_scope || rule.rbacVisibility;
+    const rawVis = config.meta.visible_scope || '';
+    rule.rbacVisibility = VISIBILITY_REVERSE[rawVis] || rawVis || rule.rbacVisibility;
     rule.editorIds = (config.meta.editor_ids || []).join(',');
   }
 
@@ -2550,6 +2843,42 @@ const fetchTopicConfig = async (ruleCode) => {
     return null;
   } finally {
     configLoading.value = false;
+  }
+};
+
+const fetchTopicHistory = async (ruleCode) => {
+  if (!ruleCode) return;
+  historyLoading.value = true;
+  historyError.value = '';
+  historyList.value = [];
+  try {
+    const res = await fetch(`/api/topics/${ruleCode}/history`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '获取历史失败');
+    historyList.value = json.data || [];
+  } catch (e) {
+    historyError.value = e.message || '请求失败';
+  } finally {
+    historyLoading.value = false;
+  }
+};
+
+const rollbackToHistory = async (ruleCode, historyId) => {
+  rollbackLoading.value = true;
+  try {
+    const res = await fetch(`/api/topics/${ruleCode}/rollback/${historyId}`, {
+      method: 'POST'
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '回滚失败');
+    return { success: true, data: json.data };
+  } catch (e) {
+    alertMock('回滚失败：' + e.message);
+    return { success: false, error: e.message };
+  } finally {
+    rollbackLoading.value = false;
   }
 };
 
@@ -2685,7 +3014,7 @@ const saveSubscriptionDraft = async () => {
   if (!rule) return;
   rule.status = 'draft';
   saveSubscriptionError.value = '';
-  const result = await createTopicOnServer();
+  const result = await createTopicOnServer('save_draft');
   if (result.success) {
     generateSmartSandboxSample();
     alertMock('订阅规则草稿已保存，专题已创建');
@@ -2702,7 +3031,7 @@ const publishSubscriptionRule = async () => {
   if (!rule) return;
   rule.status = 'applied';
   saveSubscriptionError.value = '';
-  const result = await createTopicOnServer();
+  const result = await createTopicOnServer('apply');
   if (result.success) {
     alertMock(`订阅规则已发布：将对 ${rule.topics.map(getTopicName).join(' / ')} 执行监测`);
   }
@@ -2753,10 +3082,44 @@ const toggleImmersiveMode = () => {
   state.leftCollapsed = state.rightCollapsed = state.isFilterCollapsed = state.isImmersive;
 };
 
-const toggleAlertFollow = (targetItem) => {
+const toggleAlertFollow = async (targetItem) => {
+  const previousFollowed = targetItem.followed;
+  const newFollowed = !previousFollowed;
+
+  // 乐观更新：立即切换本地状态，UI 即时响应
+  targetItem.followed = newFollowed;
   const source = listData.value.find((item) => item.id === targetItem.id);
-  if (!source) return;
-  source.followed = !source.followed;
+  if (source) source.followed = newFollowed;
+  if (newFollowed) {
+    // 关注：同步加入关注列表
+    const exists = followListData.value.find(item => item.id === targetItem.id);
+    if (!exists) followListData.value.unshift(targetItem);
+  } else {
+    // 取消关注：从关注列表移除
+    followListData.value = followListData.value.filter(item => item.id !== targetItem.id);
+  }
+
+  try {
+    const res = await fetch(
+      `/api/topics/alert/${encodeURIComponent(targetItem.id)}/monitor?status=${newFollowed ? 1 : 0}`,
+      { method: 'POST' }
+    );
+    if (!res.ok) throw new Error('API error');
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg);
+  } catch {
+    // API 失败则回退本地状态
+    targetItem.followed = previousFollowed;
+    if (source) source.followed = previousFollowed;
+    if (newFollowed) {
+      // 关注失败：移除刚才加入的条目
+      followListData.value = followListData.value.filter(item => item.id !== targetItem.id);
+    } else {
+      // 取消关注失败：恢复条目到关注列表
+      const exists = followListData.value.find(item => item.id === targetItem.id);
+      if (!exists) followListData.value.unshift(targetItem);
+    }
+  }
 };
 
 const toggleTopicStatus = (topic) => {
@@ -2776,7 +3139,21 @@ const toggleSidebarFilter = (type, val) => { filters[type] = filters[type] === v
 const resetFilters = () => { Object.keys(filters).forEach(k => filters[k] = 'all'); filters.time = '7days'; state.searchQuery = ''; state.showCustomDate = false; state.sort = 'time-desc'; state.pagination.currentPage = 1; };
 const saveFilters = () => alert('筛选条件已保存');
 
-const markAsRead = (item) => item.read = true;
+const markAsRead = async (item) => {
+  if (item.read) return;
+  try {
+    const res = await fetch(`/api/topics/alert/${encodeURIComponent(item.id)}/toggle_read`, {
+      method: 'POST'
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    if (json.code === 200) {
+      item.read = json.data.read_status === 1;
+    }
+  } catch {
+    // 静默失败
+  }
+};
 const markFalsePositive = (item) => {
   if (confirm('确定将此线索标记为“误报/噪音”吗？\n标记后该线索将从待办列表和统计图中彻底剔除。')) {
     item.falsePositive = true;
