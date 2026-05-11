@@ -374,26 +374,6 @@ async def list_alerts_all():
     return Result.success(data=items, msg=f"共 {len(items)} 条")
 
 
-@router.get("/alert/monitor_targets", response_model=Result[list[AlertListItem]])
-async def list_monitor_targets():
-    data_query = f"""
-    SELECT
-        event_id, rule_code, rule_name, title, text_preview, author_name,
-        platform, site_name, report_time, severity, region, topic, industry,
-        read_status, entity_tags, content_id, false_positive, export_status,
-        search_title_text, media_name, threat_category, channel_id,
-        source_handle, source_type, entity_values_text, is_monitor_target
-    FROM {ALERT_TABLE_NAME}
-    WHERE is_monitor_target = 1 AND false_positive != 1
-    ORDER BY report_time DESC
-    """
-
-    result = await execute_ch_query(data_query)
-    items = _parse_alert_items(result.get("data", []))
-
-    return Result.success(data=items, msg=f"共 {len(items)} 条")
-
-
 @router.get("/alert/list", response_model=Result[list[AlertListItem]])
 async def list_alerts_by_threat_category(
     threat_category: str = Query(..., description="威胁分类"),
@@ -533,35 +513,6 @@ async def toggle_alert_read(event_id: str = PathParam(..., description="告警�
     await execute_ch_query(status_update_query)
 
     return Result.success(data={"event_id": event_id, "read_status": new_status}, msg="已读状态已更新")
-
-
-@router.post("/alert/{event_id}/monitor", response_model=Result[dict])
-async def monitor_alert(
-    event_id: str = PathParam(..., description="告警事件ID"),
-    status: int = Query(..., description="关注状态，0=取消关注，1=关注"),
-):
-    check_query = f"""
-    SELECT event_id FROM {ALERT_TABLE_NAME} WHERE event_id = '{_escape_sql_string(event_id)}'
-    """
-    check_result = await execute_ch_query(check_query)
-    if not check_result.get("data", []):
-        raise HTTPException(status_code=404, detail=f"告警事件 {event_id} 不存在")
-
-    new_monitor_status = 1 if status == 0 else 0
-
-    update_query = f"""
-    ALTER TABLE {ALERT_TABLE_NAME} UPDATE is_monitor_target = {new_monitor_status}
-    WHERE event_id = '{_escape_sql_string(event_id)}'
-    """
-    await execute_ch_query(update_query)
-
-    status_update_query = f"""
-    ALTER TABLE {ALERT_STATUS_TABLE_NAME} UPDATE is_monitor_target = {new_monitor_status}
-    WHERE event_id = '{_escape_sql_string(event_id)}'
-    """
-    await execute_ch_query(status_update_query)
-
-    return Result.success(data={"event_id": event_id, "is_monitor_target": new_monitor_status}, msg="关注状态已更新")
 
 
 @router.get("/alert/{event_id}/detail", response_model=Result[AlertDetailResponse])
