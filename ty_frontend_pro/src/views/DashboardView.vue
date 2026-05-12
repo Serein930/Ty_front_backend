@@ -142,6 +142,7 @@
                       <span class="badge" :class="item.risk">{{ getRiskText(item.risk) }}</span>
                     </div>
                     <div class="item-desc">{{ item.content }}</div>
+                    <div v-if="item.translatedContent" class="item-desc translated-content" style="color:#10b981;border-left:2px solid #10b981;padding-left:8px;margin-top:4px;">{{ item.translatedContent }}</div>
                     <div class="item-meta">
                       <span class="meta-item clickable-author" title="点击查看该作者所有动态" @click.stop="toggleSidebarFilter('author', item.author)">
                         作者：<span class="meta-value">{{ item.author }}</span>
@@ -174,7 +175,7 @@
                     <button v-if="!item.authorFollowed" class="follow-btn author-follow-btn" @click.stop="followAuthor(item)"><i class="fa-solid fa-user-plus"></i> 关注作者</button>
                     <button v-else class="follow-btn author-follow-btn active" @click.stop="unfollowAuthor(item)"><i class="fa-solid fa-user-check"></i> 已关注作者</button>
                     <button class="fp-btn" @click.stop="markFalsePositive(item)"><i class="fa-solid fa-ban"></i> 误报</button>
-                    <button class="translate-btn" @click.stop="mockTranslate"><i class="fa-solid fa-language"></i> 翻译</button>
+                    <button class="translate-btn" @click.stop="translateItem(item, $event)"><i class="fa-solid fa-language"></i> 翻译</button>
                     <button class="export-item-btn" @click.stop="exportSingle(item)"><i class="fa-solid fa-download"></i> 导出</button>
                     <button class="detail-btn" @click.stop="openDetail(item)"><i class="fa-solid fa-eye"></i> 详情</button>
                   </div>
@@ -902,7 +903,7 @@
         <div class="modal-footer">
           <button class="modal-btn btn-tool download-tool" @click="alertMock('开始下载原始取证包...')"><i class="fa-solid fa-file-zipper"></i> 下载原始取证包</button>
           <button class="modal-btn btn-tool graph-tool" @click="alertMock('已打开关系图谱分析系统...')"><i class="fa-solid fa-network-wired"></i> 查看关系图谱</button>
-          <button class="modal-btn btn-tool translate-tool" @click="mockTranslate"><i class="fa-solid fa-language"></i> 全文翻译</button>
+          <button class="modal-btn btn-tool translate-tool" @click="translateItem(state.selectedDetailItem, $event)"><i class="fa-solid fa-language"></i> 全文翻译</button>
           <div style="flex: 1;"></div> 
           <button class="modal-btn btn-warning" @click="alertMock('正在生成情报线索流转单...')"><i class="fa-solid fa-share-from-square"></i> 转线索</button>
           <button class="modal-btn btn-primary" @click="alertMock('正在对接公安立案系统...')"><i class="fa-solid fa-gavel"></i> 一键立案</button>
@@ -1668,7 +1669,8 @@ const mapAlertFields = (alert, index) => ({
   exportStatus: alert.export_status || 0,
   sourceHandle: alert.source_handle || '',
   authorFollowed: false,
-  authorTargetId: ''
+  authorTargetId: '',
+  translatedContent: ''
 });
 
 const mapAlertToItem = (alert, index) => mapAlertFields(alert, index);
@@ -3164,24 +3166,15 @@ const toggleAlertFollow = async (targetItem) => {
 
   try {
     const res = await fetch(
-      `/api/topics/alert/${encodeURIComponent(targetItem.id)}/monitor?status=${newFollowed ? 1 : 0}`,
+      `/api/monitor/${encodeURIComponent(targetItem.id)}?status=${newFollowed ? 1 : 0}`,
       { method: 'POST' }
     );
     if (!res.ok) throw new Error('API error');
     const json = await res.json();
     if (json.code !== 200) throw new Error(json.msg);
   } catch {
-    // API 失败则回退本地状态
-    targetItem.followed = previousFollowed;
-    if (source) source.followed = previousFollowed;
-    if (newFollowed) {
-      // 关注失败：移除刚才加入的条目
-      followListData.value = followListData.value.filter(item => item.id !== targetItem.id);
-    } else {
-      // 取消关注失败：恢复条目到关注列表
-      const exists = followListData.value.find(item => item.id === targetItem.id);
-      if (!exists) followListData.value.unshift(targetItem);
-    }
+    // API 失败不 revert 本地状态——乐观更新已生效
+    // 服务端数据将在下次 fetchAlertList/fetchFollowList 时同步
   }
 };
 
@@ -3285,14 +3278,38 @@ const markFalsePositive = async (item) => {
     alert('误报标记失败，请重试');
   }
 };
-const mockTranslate = (e) => {
+const translateItem = async (item, e) => {
   const btn = e.currentTarget;
-  if(btn.classList.contains('translated')) return;
+  if (item.translatedContent) return;
+
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 翻译中...'; btn.style.opacity = '0.8';
-  setTimeout(() => {
-    btn.innerHTML = '<i class="fa-solid fa-check"></i> 已翻译';
-    btn.classList.add('translated'); btn.style.color = '#10b981'; btn.style.borderColor = '#10b981'; btn.style.background = 'rgba(16, 185, 129, 0.1)';
-  }, 800);
+  try {
+    const body = JSON.stringify({
+      title: item.title || '',
+      content: item.content || '',
+      target_lang: '简体中文'
+    });
+    const res = await fetch('/api/topics/translate/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code === 200 && json.data) {
+      item.translatedContent = json.data;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> 已翻译';
+      btn.classList.add('translated');
+      btn.style.color = '#10b981'; btn.style.borderColor = '#10b981';
+      btn.style.background = 'rgba(16, 185, 129, 0.1)';
+    } else {
+      throw new Error(json.detail || json.msg || '翻译失败');
+    }
+  } catch (err) {
+    btn.innerHTML = '<i class="fa-solid fa-language"></i> 翻译';
+    btn.style.opacity = '1';
+    alert('翻译失败：' + (err.message || '请重试'));
+  }
 };
 
 const alertMock = (msg) => alert(msg);
