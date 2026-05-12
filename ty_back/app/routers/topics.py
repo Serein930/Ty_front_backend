@@ -163,28 +163,37 @@ async def list_topic_names():
 @router.post("/search", response_model=Result[list[SubscriptionTopicResponse]])
 async def search_topics(payload: SubscriptionTopicSearchRequest):
     keyword = payload.keyword.strip()
-    if not keyword:
-        return Result.success(data=[])
 
     escaped_keyword = _escape_sql_string(keyword)
     like_pattern = f"%{escaped_keyword}%"
 
-    query = f"""
-    SELECT 
-        rule_code, rule_name, enabled, status, mode,
-        basic_config, ast_config, governance, delivery, meta,
-        created_at, updated_at, last_saved_draft_at, applied_at, deleted_at, final_syn_time
-    FROM {TABLE_NAME}
-    WHERE deleted_at IS NULL
-      AND (
-        rule_name LIKE '{like_pattern}'
-        OR JSONExtractString(meta, 'charge_person') LIKE '{like_pattern}'
-        OR basic_config LIKE '{like_pattern}'
-        OR ast_config LIKE '{like_pattern}'
-        OR delivery LIKE '{like_pattern}'
-      )
-    ORDER BY created_at DESC
-    """
+    if keyword:
+        query = f"""
+        SELECT
+            rule_code, rule_name, enabled, status, mode,
+            basic_config, ast_config, governance, delivery, meta,
+            created_at, updated_at, last_saved_draft_at, applied_at, deleted_at, final_syn_time
+        FROM {TABLE_NAME}
+        WHERE deleted_at IS NULL
+          AND (
+            rule_name LIKE '{like_pattern}'
+            OR JSONExtractString(meta, 'charge_person') LIKE '{like_pattern}'
+            OR basic_config LIKE '{like_pattern}'
+            OR ast_config LIKE '{like_pattern}'
+            OR delivery LIKE '{like_pattern}'
+          )
+        ORDER BY created_at DESC
+        """
+    else:
+        query = f"""
+        SELECT
+            rule_code, rule_name, enabled, status, mode,
+            basic_config, ast_config, governance, delivery, meta,
+            created_at, updated_at, last_saved_draft_at, applied_at, deleted_at, final_syn_time
+        FROM {TABLE_NAME}
+        WHERE deleted_at IS NULL
+        ORDER BY created_at DESC
+        """
 
     result = await execute_ch_query(query)
     items = []
