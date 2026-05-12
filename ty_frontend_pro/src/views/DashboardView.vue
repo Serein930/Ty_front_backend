@@ -137,15 +137,15 @@
                     <div class="item-header">
                       <div class="item-title-wrap">
                         <i class="item-source-icon fa-solid" :class="getSourceIcon(item.source)"></i>
-                        <span class="item-title">{{ getDisplayTitle(item) }}</span>
+                        <span class="item-title" v-html="highlightKeyword(getDisplayTitle(item), state.searchQuery)"></span>
                       </div>
                       <span class="badge" :class="item.risk">{{ getRiskText(item.risk) }}</span>
                     </div>
-                    <div class="item-desc">{{ item.content }}</div>
+                    <div class="item-desc" v-html="highlightKeyword(item.content, state.searchQuery)"></div>
                     <div v-if="item.translatedContent" class="item-desc translated-content" style="color:#10b981;border-left:2px solid #10b981;padding-left:8px;margin-top:4px;">{{ item.translatedContent }}</div>
                     <div class="item-meta">
                       <span class="meta-item clickable-author" title="点击查看该作者所有动态" @click.stop="toggleSidebarFilter('author', item.author)">
-                        作者：<span class="meta-value">{{ item.author }}</span>
+                        作者：<span class="meta-value" v-html="highlightKeyword(item.author, state.searchQuery)"></span>
                       </span>
                       <span class="meta-item">
                         来自：<span class="meta-value">{{ item.source }}</span>
@@ -355,10 +355,10 @@
               <div v-else class="topic-list-grid">
                 <div v-for="item in followedAlerts" :key="item.id" class="topic-card" @click="openFollowedAlertInAlerts(item)">
                   <div class="topic-head">
-                    <div class="topic-name">{{ getDisplayTitle(item) }}</div>
+                    <div class="topic-name" v-html="highlightKeyword(getDisplayTitle(item), state.searchQuery)"></div>
                     <span class="status-badge" :class="item.risk === 'high' ? 'danger' : item.risk === 'mid' ? 'warn' : 'on'">{{ getRiskText(item.risk) }}</span>
                   </div>
-                  <div class="topic-desc">{{ item.content }}</div>
+                  <div class="topic-desc" v-html="highlightKeyword(item.content, state.searchQuery)"></div>
                   <div class="topic-meta-grid">
                     <span>作者：{{ item.author }}</span>
                     <span>来源：{{ item.source }}</span>
@@ -1041,9 +1041,7 @@
 <script setup>
 import { ref, computed, reactive, onMounted, watch } from 'vue';
 import AppHeader from '../components/AppHeader.vue';
-import { mockData } from '../mock/data.js';
 
-const MOCK_REFERENCE_TIME = '2024-06-10 10:25:12';
 
 const parseDateTime = (dateStr) => {
   if (!dateStr) return null;
@@ -1064,26 +1062,8 @@ const shiftDateString = (dateStr, offsetMs) => {
   return toDateTimeString(new Date(parsed.getTime() + offsetMs));
 };
 
-const syncMockItemDates = (item, offsetMs) => {
-  const nextItem = { ...item, date: shiftDateString(item.date, offsetMs) };
-
-  if (Array.isArray(item.children)) {
-    nextItem.children = item.children.map(child => ({
-      ...child,
-      date: shiftDateString(child.date, offsetMs)
-    }));
-  }
-
-  return nextItem;
-};
-
-// === 1. 深度拷贝数据，使其完全响应式 (支持已读、选中、折叠、误报修改) ===
-const initialListData = (() => {
-  const offsetMs = Date.now() - (parseDateTime(MOCK_REFERENCE_TIME)?.getTime() || Date.now());
-  return mockData.map(item => syncMockItemDates(item, offsetMs));
-})();
-
-const listData = ref(JSON.parse(JSON.stringify(initialListData)));
+// === 1. 数据列表（初始为空，由 API 填充）===
+const listData = ref([]);
 
 const followListData = ref([]);
 const followLoading = ref(false);
@@ -1446,7 +1426,7 @@ const state = reactive({
 });
 
 const filters = reactive({
-  time: '7days', risk: 'all', read: 'all', media: 'all', topic: 'all',
+  time: 'all', risk: 'all', read: 'all', media: 'all', topic: 'all',
   rule: 'all', author: 'all', region: 'all', industry: 'all', entity: '',
   customStart: '', customEnd: ''
 });
@@ -1474,6 +1454,7 @@ onMounted(() => {
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.select-box')) state.isSortDropdownOpen = false;
   });
+  fetchAlertList();
 });
 
 // === 3. 基础工具与映射方法 ===
@@ -1496,6 +1477,12 @@ const getIndustryName = (ind) => ({ 'Finance': '金融', 'Gov': '政府', 'Tech'
 const getProvince = (region) => region ? (region.includes('/') ? region.split('/')[0] : region) : '未知';
 const formatTime = (dateStr) => dateStr ? dateStr.replace(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}):\d{2}/, '$1 $2') : '';
 const getDisplayTitle = (item) => item.title || item.siteName || item.author || '未命名线索';
+const highlightKeyword = (text, keyword) => {
+  if (!keyword || !text) return text;
+  const escaped = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const escapedKw = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escaped.replace(new RegExp(`(${escapedKw})`, 'gi'), '<mark class="search-highlight">$1</mark>');
+};
 const getSiteLabel = (item) => item.source === 'Telegram' ? '群组/频道' : '网站';
 const getSourceIcon = (source) => ({ Telegram: 'fa-paper-plane', Tor: 'fa-user-secret', Weibo: 'fa-globe', I2P: 'fa-network-wired' }[source] || 'fa-circle-user');
 const getRuleList = (item) => {
@@ -1828,7 +1815,7 @@ const fetchAlertDetail = async (eventId, contentId) => {
 };
 
 const resetAlertFiltersByPreset = () => {
-  filters.time = '7days';
+  filters.time = 'all';
   filters.risk = 'all';
   filters.read = 'all';
   filters.media = 'all';
