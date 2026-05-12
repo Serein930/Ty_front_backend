@@ -25,6 +25,10 @@ export default defineConfig({
       '/api/topics': {
         target: 'http://localhost:8888',
         changeOrigin: true
+      },
+      '/api/monitor': {
+        target: 'http://localhost:8888',
+        changeOrigin: true
       }
     }
   }

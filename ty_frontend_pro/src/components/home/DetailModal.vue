@@ -128,6 +128,14 @@ const props = defineProps({
       if (score >= 50) return 'p-score-medium';
       return 'p-score-low';
     }
+  },
+  activityGrid: {
+    type: Array,
+    default: null
+  },
+  activityTotalPosts: {
+    type: Number,
+    default: 0
   }
 });
 
@@ -165,16 +173,26 @@ const initCharts = (person) => {
 
   const heat = echarts.init(heatEl);
   const heatData = [];
-  for (let d = 0; d < 7; d += 1) {
-    for (let h = 0; h < 24; h += 1) {
-      heatData.push([h, d, Math.round(20 + Math.abs(Math.sin((h + d) / 4) * 60))]);
+  const grid = props.activityGrid;
+  if (grid && grid.length === 7) {
+    for (let d = 0; d < 7; d += 1) {
+      for (let h = 0; h < 24; h += 1) {
+        heatData.push([h, d, grid[d]?.[h] || 0]);
+      }
+    }
+  } else {
+    for (let d = 0; d < 7; d += 1) {
+      for (let h = 0; h < 24; h += 1) {
+        heatData.push([h, d, Math.round(20 + Math.abs(Math.sin((h + d) / 4) * 60))]);
+      }
     }
   }
+  const heatMax = Math.max(...heatData.map(d => d[2]), 1);
   heat.setOption({
     grid: { left: 36, right: 12, top: 20, bottom: 28 },
-    xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, i) => `${i}`), axisLabel: { color: '#8fa7cc', fontSize: 10 }, axisLine: { lineStyle: { color: '#2d4f7f' } } },
+    xAxis: { type: 'category', data:Array.from({ length: 24 }, (_, i) => `${i}`), axisLabel: { color: '#8fa7cc', fontSize: 10 }, axisLine: { lineStyle: { color: '#2d4f7f' } } },
     yAxis: { type: 'category', data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'], axisLabel: { color: '#8fa7cc', fontSize: 10 }, axisLine: { lineStyle: { color: '#2d4f7f' } } },
-    visualMap: { min: 0, max: 100, show: false, inRange: { color: ['#0b1b3c', '#1d4ed8', '#22d3ee'] } },
+    visualMap: { min: 0, max: heatMax, show: false, inRange: { color: ['#0b1b3c', '#1d4ed8', '#22d3ee'] } },
     series: [{ type: 'heatmap', data: heatData }]
   });
 
@@ -217,6 +235,12 @@ const disposeCharts = () => {
 
 watch(() => props.visible, (newVal) => {
   if (newVal && props.mode === 'person' && props.person) {
+    nextTick(() => initCharts(props.person));
+  }
+});
+
+watch(() => props.activityGrid, (newGrid) => {
+  if (newGrid && props.person && props.visible) {
     nextTick(() => initCharts(props.person));
   }
 });

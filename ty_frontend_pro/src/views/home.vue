@@ -91,6 +91,8 @@
       :html-content="detailHtml"
       :avatar-initial="avatarInitial"
       :score-class="scoreClass"
+      :activity-grid="authorActivity?.grid || null"
+      :activity-total-posts="authorActivity?.total_posts || 0"
       @close="closeDetailModal"
       @clone="openCloneWorkspace"
     />
@@ -302,6 +304,8 @@ const {
   avatarInitial,
   scoreClass,
   closeDetailModal,
+  authorActivity,
+  activityLoading,
   handleMapClick,
   handleContextMenu
 } = useHomeData();

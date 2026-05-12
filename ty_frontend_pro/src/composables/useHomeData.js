@@ -188,6 +188,104 @@ export function useHomeData() {
     }
   }
 
+  const followedAuthors = ref([]);
+
+  const feedLoading = ref(false);
+  const feedError = ref(null);
+
+  const authorActivity = ref(null);
+  const activityLoading = ref(false);
+
+  async function fetchFollowedAuthors() {
+    try {
+      const res = await fetch('/api/monitor/authors/following?page=1&page_size=50');
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.code !== 200) return;
+      followedAuthors.value = (json.data?.list || []).map(a => ({
+        id: a.target_id,
+        profileId: a.profile_id || '',
+        alias: a.author_name || a.source_handle_norm || '未命名',
+        country: '--',
+        city: '--',
+        platform: a.platform || '',
+        score: 50,
+        confidence: 0,
+        type: 'black',
+        tags: [],
+        desc: `${a.platform}: ${a.source_handle_norm}`,
+        avatar: a.avatar_url || '',
+        assets: {}
+      }));
+      if (followedAuthors.value.length) {
+        hotPersons.value = followedAuthors.value;
+      }
+    } catch { /* 保持 mock 数据 */ }
+  }
+
+  function platformIcon(platform) {
+    const map = {
+      telegram: 'fa-brands fa-telegram',
+      forum: 'fa-solid fa-comments',
+      x: 'fa-brands fa-x-twitter',
+      twitter: 'fa-brands fa-x-twitter',
+      facebook: 'fa-brands fa-facebook',
+      darkweb: 'fa-solid fa-mask',
+      tor: 'fa-solid fa-mask'
+    };
+    const key = (platform || '').toLowerCase();
+    return map[key] || 'fa-solid fa-globe';
+  }
+
+  function formatPublishTime(isoString) {
+    if (!isoString) return '--:--';
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '--:--';
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+
+  async function fetchAuthorFeed(page = 1, pageSize = 20) {
+    feedLoading.value = true;
+    feedError.value = null;
+    try {
+      const res = await fetch(`/api/monitor/authors/feed?page=${page}&page_size=${pageSize}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.code !== 200) return;
+      const list = json.data?.list || [];
+      if (list.length) {
+        feed.value = list.map(item => ({
+          id: item.content_id,
+          source: item.platform || item.media_name || '未知',
+          icon: platformIcon(item.platform),
+          level: 'medium',
+          clusterCount: 1,
+          time: formatPublishTime(item.publish_time),
+          title: item.title || '无标题',
+          text: item.text_preview || '',
+          country: item.region || '境外'
+        }));
+      }
+    } catch { /* 保持 mock 数据 */ }
+    finally { feedLoading.value = false; }
+  }
+
+  async function fetchAuthorActivity(profileId) {
+    if (!profileId) return;
+    activityLoading.value = true;
+    authorActivity.value = null;
+    try {
+      const res = await fetch(`/api/monitor/authors/activity?profile_id=${encodeURIComponent(profileId)}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.code !== 200) return;
+      authorActivity.value = json.data;
+    } catch { /* 保持 null */ }
+    finally { activityLoading.value = false; }
+  }
+
   // 重点人物数据
   const hotPersons = ref([
     {
@@ -405,6 +503,7 @@ export function useHomeData() {
     currentPerson.value = person;
     detailTitle.value = '重点人物战术画像 (SubjectProfile)';
     detailVisible.value = true;
+    fetchAuthorActivity(person.profileId);
   };
 
   const showFeedDetail = (cluster) => {
@@ -537,6 +636,8 @@ export function useHomeData() {
     document.addEventListener('click', hideFloatingMenus);
     fetchSubscriptionAlertStats();
     fetchIntelligenceTrend();
+    fetchFollowedAuthors();
+    fetchAuthorFeed();
   });
 
   onUnmounted(() => {
@@ -576,6 +677,10 @@ export function useHomeData() {
     filteredPersons,
     feed,
     filteredFeed,
+    feedLoading,
+    feedError,
+    authorActivity,
+    activityLoading,
     monitoredEntities,
     countryCoordinates,
     orgRows,
@@ -634,7 +739,11 @@ export function useHomeData() {
     trendError,
     filteredTrendItems,
     activeTrendData,
+    followedAuthors,
     fetchIntelligenceTrend,
+    fetchFollowedAuthors,
+    fetchAuthorFeed,
+    fetchAuthorActivity,
 
     // 方法
     applySubscription,

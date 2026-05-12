@@ -171,6 +171,8 @@
                   </div>
                   <div class="item-actions">
                     <button class="follow-btn" :class="{ active: item.followed }" @click.stop="toggleAlertFollow(item)"><i class="fa-regular" :class="item.followed ? 'fa-heart-circle-check' : 'fa-heart'"></i> {{ item.followed ? '已关注' : '关注' }}</button>
+                    <button v-if="!item.authorFollowed" class="follow-btn author-follow-btn" @click.stop="followAuthor(item)"><i class="fa-solid fa-user-plus"></i> 关注作者</button>
+                    <button v-else class="follow-btn author-follow-btn active" @click.stop="unfollowAuthor(item)"><i class="fa-solid fa-user-check"></i> 已关注作者</button>
                     <button class="fp-btn" @click.stop="markFalsePositive(item)"><i class="fa-solid fa-ban"></i> 误报</button>
                     <button class="translate-btn" @click.stop="mockTranslate"><i class="fa-solid fa-language"></i> 翻译</button>
                     <button class="export-item-btn" @click.stop="exportSingle(item)"><i class="fa-solid fa-download"></i> 导出</button>
@@ -882,7 +884,8 @@
               <div class="tg-body" style="padding: 20px; background: #0f172a; min-height:300px;">
                   <div class="tg-msg outgoing" style="display: flex; flex-direction: row-reverse; gap: 10px; margin-bottom: 5px;">
                       <div class="tg-bubble" style="background: #3b82f6; padding: 8px 10px; border-radius: 12px 0 12px 12px; max-width: 75%;">
-                          {{ state.selectedDetailItem.content }}
+                          <div v-if="detailLoading" class="loading-spinner"></div>
+                          <template v-else>{{ detailRawContent || state.selectedDetailItem.content }}</template>
                       </div>
                   </div>
               </div>
@@ -891,7 +894,8 @@
             <h2 style="font-size: 18px; margin-bottom: 10px; color: var(--accent-blue);">{{ state.selectedDetailItem.title }}</h2>
             <p style="color: var(--text-dim); margin-bottom: 15px;">发布人: {{ state.selectedDetailItem.author }} | 时间: {{ state.selectedDetailItem.date }}</p>
             <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 6px; border: 1px solid var(--border-color);">
-              {{ state.selectedDetailItem.content }}
+              <div v-if="detailLoading" class="loading-spinner"></div>
+              <template v-else>{{ detailRawContent || state.selectedDetailItem.content }}</template>
             </div>
           </div>
         </div>
@@ -1087,6 +1091,9 @@ const followError = ref('');
 const ruleNameStats = ref([]);
 const statsLoading = ref(false);
 const statsError = ref('');
+
+const detailLoading = ref(false);
+const detailRawContent = ref('');
 
 const topicList = ref([
   { id: 1, name: '毒品交易链路专题', owner: '刘洋', keywordCount: 128, sourceCount: 6, hits: 1362, status: '运行中', lastRun: '2026-03-29 10:18', desc: '围绕暗语、物流与收款地址识别涉毒交易组织链路。' },
@@ -1656,7 +1663,12 @@ const mapAlertFields = (alert, index) => ({
   isExpanded: false,
   children: [],
   stats: { fwd: 0, cmt: 0, sim: 0 },
-  chatMeta: null
+  chatMeta: null,
+  contentId: alert.content_id || '',
+  exportStatus: alert.export_status || 0,
+  sourceHandle: alert.source_handle || '',
+  authorFollowed: false,
+  authorTargetId: ''
 });
 
 const mapAlertToItem = (alert, index) => mapAlertFields(alert, index);
@@ -1676,18 +1688,19 @@ const fetchAlertList = async () => {
   } finally {
     alertListLoading.value = false;
   }
+  fetchAuthorFollowStatus(listData.value);
 };
 
 const fetchFollowList = async () => {
   followLoading.value = true;
   followError.value = '';
   try {
-    const res = await fetch('/api/topics/alert/monitor_targets');
+    const res = await fetch('/api/monitor/event');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     if (json.code !== 200) throw new Error(json.msg || '获取关注列表失败');
     followListData.value = (json.data || []).map(mapFollowItem);
-    // 合并本地已关注但后端尚未返回的条目（处理 monitor 接口异步延迟）
+    // 合并本地已关注但后端尚未返回的条目（处理异步延迟）
     const localFollowed = listData.value.filter(item => item.followed && !item.falsePositive);
     for (const item of localFollowed) {
       if (!followListData.value.find(f => f.id === item.id)) {
@@ -1699,6 +1712,7 @@ const fetchFollowList = async () => {
   } finally {
     followLoading.value = false;
   }
+  fetchAuthorFollowStatus(followListData.value);
 };
 
 const fetchAlertsByTopic = async (threatCategory) => {
@@ -1716,6 +1730,7 @@ const fetchAlertsByTopic = async (threatCategory) => {
   } finally {
     alertListLoading.value = false;
   }
+  fetchAuthorFollowStatus(listData.value);
 };
 
 const fetchAlertsByTopicName = async (topicName) => {
@@ -1733,6 +1748,7 @@ const fetchAlertsByTopicName = async (topicName) => {
   } finally {
     alertListLoading.value = false;
   }
+  fetchAuthorFollowStatus(listData.value);
 };
 
 const fetchRuleNameStats = async () => {
@@ -1759,6 +1775,53 @@ const fetchRuleNameStats = async () => {
     statsError.value = e.message || '请求失败';
   } finally {
     statsLoading.value = false;
+  }
+};
+
+const fetchAuthorFollowStatus = async (items) => {
+  const authors = items
+    .filter(item => item.author && item.source)
+    .map(item => ({
+      profile_id: item.authorTargetId || '',
+      platform: item.source,
+      source_handle_norm: item.sourceHandle || item.author || ''
+    }));
+  if (!authors.length) return;
+  try {
+    const res = await fetch('/api/monitor/authors/follow-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ authors })
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    if (json.code === 200 && json.data) {
+      for (const item of items) {
+        const targetId = item.authorTargetId || `${item.source}:${item.sourceHandle || item.author}`;
+        if (json.data[targetId] !== undefined) {
+          item.authorFollowed = json.data[targetId];
+          if (json.data[targetId]) item.authorTargetId = targetId;
+        }
+      }
+    }
+  } catch { /* 静默失败 */ }
+};
+
+const fetchAlertDetail = async (eventId, contentId) => {
+  detailLoading.value = true;
+  detailRawContent.value = '';
+  try {
+    const url = `/api/topics/alert/${encodeURIComponent(eventId)}/detail?content_id=${encodeURIComponent(contentId)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code === 200 && json.data) {
+      detailRawContent.value = json.data.raw_content || '';
+    }
+  } catch {
+    detailRawContent.value = '';
+  } finally {
+    detailLoading.value = false;
   }
 };
 
@@ -3122,6 +3185,57 @@ const toggleAlertFollow = async (targetItem) => {
   }
 };
 
+const followAuthor = async (item) => {
+  try {
+    const body = JSON.stringify({
+      profile_id: '',
+      platform: item.source || '',
+      source_handle_norm: item.sourceHandle || item.author || '',
+      author_name: item.author || '',
+      avatar_url: ''
+    });
+    const res = await fetch('/api/monitor/authors/follow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body
+    });
+    if (!res.ok) throw new Error('API error');
+    const json = await res.json();
+    if (json.code === 200) {
+      item.authorFollowed = true;
+      item.authorTargetId = json.data.target_id;
+      alert(`已关注作者: ${item.author}`);
+    }
+  } catch {
+    alert('关注作者失败，请重试');
+  }
+};
+
+const unfollowAuthor = async (item) => {
+  try {
+    const body = JSON.stringify({
+      profile_id: item.authorTargetId || '',
+      platform: item.source || '',
+      source_handle_norm: item.sourceHandle || item.author || '',
+      author_name: item.author || '',
+      avatar_url: ''
+    });
+    const res = await fetch('/api/monitor/authors/unfollow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body
+    });
+    if (!res.ok) throw new Error('API error');
+    const json = await res.json();
+    if (json.code === 200) {
+      item.authorFollowed = false;
+      alert(`已取消关注作者: ${item.author}`);
+    }
+  } catch {
+    alert('取消关注失败，请重试');
+  }
+};
+
 const toggleTopicStatus = (topic) => {
   if (topic.status === '归档') {
     alertMock('归档专题请先恢复后再启动');
@@ -3154,11 +3268,21 @@ const markAsRead = async (item) => {
     // 静默失败
   }
 };
-const markFalsePositive = (item) => {
-  if (confirm('确定将此线索标记为“误报/噪音”吗？\n标记后该线索将从待办列表和统计图中彻底剔除。')) {
-    item.falsePositive = true;
-    item.selected = false;
-    item.followed = false;
+const markFalsePositive = async (item) => {
+  if (!confirm('确定将此线索标记为”误报/噪音”吗？\n标记后该线索将从待办列表和统计图中彻底剔除。')) return;
+  const previous = { falsePositive: item.falsePositive, selected: item.selected, followed: item.followed };
+  item.falsePositive = true;
+  item.selected = false;
+  item.followed = false;
+  followListData.value = followListData.value.filter(f => f.id !== item.id);
+  try {
+    const res = await fetch(`/api/topics/alert/${encodeURIComponent(item.id)}/false_positive`, { method: 'POST' });
+    if (!res.ok) throw new Error('API error');
+  } catch {
+    item.falsePositive = previous.falsePositive;
+    item.selected = previous.selected;
+    item.followed = previous.followed;
+    alert('误报标记失败，请重试');
   }
 };
 const mockTranslate = (e) => {
@@ -3172,17 +3296,64 @@ const mockTranslate = (e) => {
 };
 
 const alertMock = (msg) => alert(msg);
-const exportSelected = () => alert('导出选中项成功！');
-const exportAll = () => alert('导出全部数据成功！');
-const exportSingle = (item) => alert(`导出单条记录: ${item.title}`);
+const exportSingle = async (item) => {
+  try {
+    const res = await fetch(`/api/topics/alert/${encodeURIComponent(item.id)}/export`, { method: 'POST' });
+    if (!res.ok) throw new Error('API error');
+    const json = await res.json();
+    if (json.code === 200) {
+      item.exportStatus = json.data.export_status;
+      alert(`已导出: ${item.title?.substring(0, 30) || '告警记录'}`);
+    }
+  } catch {
+    alert('导出失败，请重试');
+  }
+};
+
+const exportSelected = async () => {
+  const selected = listData.value.filter(item => item.selected && !item.exportStatus);
+  if (!selected.length) return alert('没有可导出的选中项');
+  let count = 0;
+  for (const item of selected) {
+    try {
+      const res = await fetch(`/api/topics/alert/${encodeURIComponent(item.id)}/export`, { method: 'POST' });
+      const json = await res.json();
+      if (json.code === 200) { item.exportStatus = 1; count++; }
+    } catch { /* 跳过 */ }
+  }
+  alert(`导出完成: ${count}/${selected.length} 条`);
+};
+
+const exportAll = async () => {
+  const pending = listData.value.filter(item => !item.exportStatus);
+  if (!pending.length) return alert('所有数据均已导出');
+  let count = 0;
+  for (const item of pending) {
+    try {
+      const res = await fetch(`/api/topics/alert/${encodeURIComponent(item.id)}/export`, { method: 'POST' });
+      const json = await res.json();
+      if (json.code === 200) { item.exportStatus = 1; count++; }
+    } catch { /* 跳过 */ }
+  }
+  alert(`导出完成: ${count}/${pending.length} 条`);
+};
 
 // 模态框逻辑
-const openDetail = (item, parentItem = null) => { 
+const openDetail = (item, parentItem = null) => {
   state.selectedDetailItem = Object.assign({}, parentItem || item, item); // 继承父级属性
   state.selectedDetailItem.read = true;
-  state.isModalOpen = true; 
+  state.isModalOpen = true;
+  if (item.id && item.contentId) {
+    fetchAlertDetail(item.id, item.contentId);
+  } else {
+    detailRawContent.value = '';
+  }
 };
-const closeModal = () => { state.isModalOpen = false; setTimeout(() => state.selectedDetailItem = null, 300); };
+const closeModal = () => {
+  state.isModalOpen = false;
+  detailRawContent.value = '';
+  setTimeout(() => state.selectedDetailItem = null, 300);
+};
 
 // === 6. 右侧边栏动态数据计算 ===
 const topRegions = computed(() => {
