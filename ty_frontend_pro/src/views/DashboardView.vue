@@ -1041,9 +1041,7 @@
 <script setup>
 import { ref, computed, reactive, onMounted, watch } from 'vue';
 import AppHeader from '../components/AppHeader.vue';
-import { mockData } from '../mock/data.js';
 
-const MOCK_REFERENCE_TIME = '2024-06-10 10:25:12';
 
 const parseDateTime = (dateStr) => {
   if (!dateStr) return null;
@@ -1064,26 +1062,8 @@ const shiftDateString = (dateStr, offsetMs) => {
   return toDateTimeString(new Date(parsed.getTime() + offsetMs));
 };
 
-const syncMockItemDates = (item, offsetMs) => {
-  const nextItem = { ...item, date: shiftDateString(item.date, offsetMs) };
-
-  if (Array.isArray(item.children)) {
-    nextItem.children = item.children.map(child => ({
-      ...child,
-      date: shiftDateString(child.date, offsetMs)
-    }));
-  }
-
-  return nextItem;
-};
-
-// === 1. 深度拷贝数据，使其完全响应式 (支持已读、选中、折叠、误报修改) ===
-const initialListData = (() => {
-  const offsetMs = Date.now() - (parseDateTime(MOCK_REFERENCE_TIME)?.getTime() || Date.now());
-  return mockData.map(item => syncMockItemDates(item, offsetMs));
-})();
-
-const listData = ref(JSON.parse(JSON.stringify(initialListData)));
+// === 1. 数据列表（初始为空，由 API 填充）===
+const listData = ref([]);
 
 const followListData = ref([]);
 const followLoading = ref(false);
@@ -1446,7 +1426,7 @@ const state = reactive({
 });
 
 const filters = reactive({
-  time: '7days', risk: 'all', read: 'all', media: 'all', topic: 'all',
+  time: 'all', risk: 'all', read: 'all', media: 'all', topic: 'all',
   rule: 'all', author: 'all', region: 'all', industry: 'all', entity: '',
   customStart: '', customEnd: ''
 });
@@ -1474,6 +1454,7 @@ onMounted(() => {
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.select-box')) state.isSortDropdownOpen = false;
   });
+  fetchAlertList();
 });
 
 // === 3. 基础工具与映射方法 ===
@@ -1828,7 +1809,7 @@ const fetchAlertDetail = async (eventId, contentId) => {
 };
 
 const resetAlertFiltersByPreset = () => {
-  filters.time = '7days';
+  filters.time = 'all';
   filters.risk = 'all';
   filters.read = 'all';
   filters.media = 'all';
