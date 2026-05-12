@@ -1591,3 +1591,11 @@
   .cfg3-mode-preview-title { font-size: 18px; }
   .cfg3-mode-json { font-size: 12px; }
 }
+
+/* ====== 搜索关键词高亮 ====== */
+.search-highlight {
+  background: rgba(250, 204, 21, 0.35);
+  color: #facc15;
+  padding: 1px 2px;
+  border-radius: 2px;
+}
