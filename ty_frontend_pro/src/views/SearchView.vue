@@ -178,7 +178,7 @@
                             <div class="person-meta-row">
                               <span class="meta-source"><i :class="getMediaIcon(item.media)"></i> {{ item.media }}</span>
                               <span><i class="fa-regular fa-clock"></i> 最后活跃: {{ item.date }}</span>
-                              <span><i class="fa-solid fa-location-dot"></i> {{ item.region }}</span>
+                              <span><i class="fa-solid fa-location-dot"></i> {{ [item.region, item.region_province].filter(Boolean).join(' ') }}</span>
                             </div>
 
                             <div class="person-confidence-row">
@@ -223,7 +223,7 @@
                             <div class="intel-meta-row">
                               <span class="meta-source"><i :class="getMediaIcon(item.media)"></i> {{ item.media }} / {{ getIntelChannel(item) }}</span>
                               <span><i class="fa-regular fa-clock"></i> {{ getIntelTime(item) }}</span>
-                              <span><i class="fa-solid fa-location-dot"></i> {{ item.region }}</span>
+                              <span><i class="fa-solid fa-location-dot"></i> {{ [item.region, item.region_province].filter(Boolean).join(' ') }}</span>
                             </div>
 
                             <div class="intel-footer-right">
@@ -1061,9 +1061,27 @@ const ruleTop5 = computed(() => {
   return list.map((x) => ({ ...x, percent: Math.round((x.count / top) * 100) }));
 });
 
-const getRiskText = (risk) => ({ high: '高危', mid: '中危', low: '低危' }[risk] || risk);
-const riskClass = (risk) => (risk === 'high' ? 'high' : risk === 'mid' ? 'mid' : 'low');
-const riskBadgeClass = (risk) => (risk === 'high' ? 'badge-danger' : risk === 'mid' ? 'badge-warning' : 'badge-success');
+const getRiskText = (risk) => {
+  const map = {
+    'CRITICAL': '高危', 'HIGH': '高危', 'MEDIUM': '中危', 'LOW': '低危',
+    'Critical high': '高危', 'Medium': '中危', 'Low': '低危',
+    'high': '高危', 'mid': '中危', 'low': '低危',
+    '高危': '高危', '中危': '中危', '低危': '低危'
+  };
+  return map[risk] || risk;
+};
+const riskClass = (risk) => {
+  if (risk === 'CRITICAL' || risk === 'HIGH' || risk === 'high' || risk === 'Critical high' || risk === '高危') return 'high';
+  if (risk === 'MEDIUM' || risk === 'mid' || risk === '中危') return 'mid';
+  if (risk === 'LOW' || risk === 'low' || risk === 'Low' || risk === '低危') return 'low';
+  return 'low';
+};
+const riskBadgeClass = (risk) => {
+  if (risk === 'CRITICAL' || risk === 'HIGH' || risk === 'high' || risk === 'Critical high' || risk === '高危') return 'badge-danger';
+  if (risk === 'MEDIUM' || risk === 'mid' || risk === '中危') return 'badge-warning';
+  if (risk === 'LOW' || risk === 'low' || risk === 'Low' || risk === '低危') return 'badge-success';
+  return 'badge-success';
+};
 const getPlatformLabel = (media) => {
   if (media === 'X') return 'X (Twitter)';
   return media;
@@ -1121,6 +1139,15 @@ const getIntelEntityTone = (entity = '') => {
 };
 
 const getIntelTime = (item) => {
+  if (item?.date && item.date.includes('-')) {
+    const seed = Number(item?.id || 0);
+    if (!isNaN(seed)) {
+      const hour = String((seed * 3) % 24).padStart(2, '0');
+      const minute = String((seed * 7) % 60).padStart(2, '0');
+      return `${item.date} ${hour}:${minute}`.trim();
+    }
+    return item.date;
+  }
   const seed = Number(item?.id || 0);
   const hour = String((seed * 3) % 24).padStart(2, '0');
   const minute = String((seed * 7) % 60).padStart(2, '0');

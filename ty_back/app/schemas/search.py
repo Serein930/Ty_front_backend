@@ -14,6 +14,7 @@ class SearchResultItem(BaseModel):
     risk: str
     media: str
     region: str
+    region_province: str
     topic: str
     date: str
     dayDiff: int
