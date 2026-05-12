@@ -3289,7 +3289,7 @@ const translateItem = async (item, e) => {
       content: item.content || '',
       target_lang: '简体中文'
     });
-    const res = await fetch('/api/topics/translate/', {
+    const res = await fetch('/api/topics/translate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body
