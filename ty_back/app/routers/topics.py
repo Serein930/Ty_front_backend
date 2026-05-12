@@ -362,7 +362,7 @@ async def list_alerts_all():
         platform, site_name, report_time, severity, region, topic, industry,
         read_status, entity_tags, content_id, false_positive, export_status,
         search_title_text, media_name, threat_category, channel_id,
-        source_handle, source_type, entity_values_text
+        source_handle, source_type, entity_values_text, is_monitor_target
     FROM {ALERT_TABLE_NAME}
     WHERE false_positive != 1
     ORDER BY report_time DESC
@@ -384,7 +384,7 @@ async def list_alerts_by_threat_category(
         platform, site_name, report_time, severity, region, topic, industry,
         read_status, entity_tags, content_id, false_positive, export_status,
         search_title_text, media_name, threat_category, channel_id,
-        source_handle, source_type, entity_values_text
+        source_handle, source_type, entity_values_text, is_monitor_target
     FROM {ALERT_TABLE_NAME}
     WHERE threat_category = '{_escape_sql_string(threat_category)}' AND false_positive != 1
     ORDER BY report_time DESC
@@ -406,7 +406,7 @@ async def list_alerts_by_topic_name(
         platform, site_name, report_time, severity, region, topic, industry,
         read_status, entity_tags, content_id, false_positive, export_status,
         search_title_text, media_name, threat_category, channel_id,
-        source_handle, source_type, entity_values_text
+        source_handle, source_type, entity_values_text, is_monitor_target
     FROM {ALERT_TABLE_NAME}
     WHERE rule_name = '{_escape_sql_string(name)}' AND false_positive != 1
     ORDER BY report_time DESC

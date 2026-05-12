@@ -96,7 +96,7 @@ async def monitor_alert(
     if not check_result.get("data", []):
         raise HTTPException(status_code=404, detail=f"告警事件 {event_id} 不存在")
 
-    new_monitor_status = 1 if status == 0 else 0
+    new_monitor_status = status
 
     update_query = f"""
     ALTER TABLE {ALERT_TABLE_NAME} UPDATE is_monitor_target = {new_monitor_status}
