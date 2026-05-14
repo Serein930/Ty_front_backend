@@ -75,6 +75,8 @@ async def sync_content_to_milvus(
             "region": item.get("region", ""),
             "url": item.get("url", ""),
             "text_preview": item.get("text_preview", ""),
+            "topic": item.get("topic", ""),
+            "entity_tags": item.get("entity_tags", []),
         }
 
         success = await sync_single_content(

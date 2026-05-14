@@ -58,6 +58,8 @@ class SearchSource(BaseModel):
         region: 地区
         publish_time: 发布时间
         url: 原文链接
+        topic: 主题
+        entity_tags: 实体标签简表
     """
 
     content_id: str = Field(..., description="内容唯一标识")
@@ -74,6 +76,8 @@ class SearchSource(BaseModel):
     region: Optional[str] = Field(None, description="地区")
     publish_time: Optional[int] = Field(None, description="发布时间戳")
     url: Optional[str] = Field(None, description="原文链接")
+    topic: Optional[str] = Field(None, description="主题")
+    entity_tags: Optional[List[str]] = Field(None, description="实体标签简表")
 
 
 class RAGSearchResponse(BaseModel):

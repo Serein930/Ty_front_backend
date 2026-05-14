@@ -411,8 +411,8 @@ class RAGSearchService:
         {time}
         【核心原则 & 避坑指南】(非常重要!!!)
         1. IN 操作符语法:
-           - 正确: 必须使用 方括号 [] 表示列表。例如: risk_level in ['高危', '中危']
-           - 错误: 严禁使用圆括号 ()。例如: risk_level in ('高危', '中危') (这是非法语法)。
+           - 正确: 必须使用 方括号 [] 表示列表。例如: risk_level in ['高危', '中危', '低危']
+           - 错误: 严禁使用圆括号 ()。例如: risk_level in ('高危', '中危', '低危') (这是非法语法)。
         2. 关键词匹配:
            - 不要在 expr 中使用 like 进行全文/模糊搜索（如 title like '%关键词%' 是低效且受限的）
            - 所有关于内容、主题、实体的文本检索意图，请直接放入 keywords 字段，利用向量检索的语义能力。
@@ -504,7 +504,8 @@ class RAGSearchService:
            - region (地区)
            - publish_time (时间戳, int64)
            - url (原文链接)
-
+           - topic (主题)
+           - entity_tags (实体标签简表)
         """ + base_prompt
 
         self.chain_analysis = (
@@ -625,16 +626,6 @@ class RAGSearchService:
             "model": llm_settings.MODEL_NAME
         }
         
-        # 打印返回结果摘要
-        logger.info(f"=" * 60)
-        logger.info(f"RAG 搜索完成 - 返回结果摘要:")
-        logger.info(f"  - session_id: {session_id}")
-        logger.info(f"  - model: {llm_settings.MODEL_NAME}")
-        logger.info(f"  - sources 数量: {len(all_results)}")
-        logger.info(f"  - answer 长度: {len(answer)} 字符")
-        logger.info(f"  - answer 前200字符: {answer[:200]}...")
-        logger.info(f"=" * 60)
-        
         return result
 
     def _rewrite_question(self, question: str, session_id: str) -> str:
@@ -709,7 +700,8 @@ class RAGSearchService:
                     "content_id", "title", "text_preview", "raw_content",
                     "platform", "site_name", "author_name", "threat_category",
                     "risk_level", "industry", "risk_score", "region",
-                    "publish_time", "url"
+                    "publish_time", "url",
+                    "topic", "entity_tags"
                 ]
             )
             logger.info(f"[_search_content] 搜索完成，初步结果数量: {len(results)}")
@@ -821,6 +813,8 @@ class RAGSearchService:
                     "region": entity.get("region", ""),
                     "publish_time": entity.get("publish_time", 0),
                     "url": entity.get("url", ""),
+                    "topic": entity.get("topic", ""),
+                    "entity_tags": json.loads(entity.get("entity_tags", "[]")),
                     "similarity_score": similarity_score,
                 }
                 parsed.append(item)
@@ -1081,7 +1075,11 @@ class RAGSearchService:
             line += f"    来源: {item.get('platform', '')} | "
             line += f"风险等级: {item.get('risk_level', '')} | "
             line += f"行业: {item.get('industry', '')} | "
-            line += f"地区: {item.get('region', '')}"
+            line += f"地区: {item.get('region', '')} | "
+            line += f"主题: {item.get('topic', '')}"
+            tags = item.get('entity_tags', [])
+            if tags:
+                line += f" | 标签: {', '.join(tags)}"
             lines.append(line)
         return "\n".join(lines)
 

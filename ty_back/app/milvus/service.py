@@ -1,3 +1,4 @@
+import json
 import math
 from typing import Any, Dict, List, Optional
 
@@ -61,6 +62,8 @@ def create_ty_content_collection() -> Collection:
         FieldSchema(name="risk_score", dtype=DataType.FLOAT),
         FieldSchema(name="region", dtype=DataType.VARCHAR, max_length=128),
         FieldSchema(name="url", dtype=DataType.VARCHAR, max_length=1024),
+        FieldSchema(name="topic", dtype=DataType.VARCHAR, max_length=128),
+        FieldSchema(name="entity_tags", dtype=DataType.VARCHAR, max_length=128, array=True),
     ]
 
     schema = CollectionSchema(fields=fields, description="Threat intelligence content collection")
@@ -135,6 +138,8 @@ def insert_chunks(
         [metadata.get("risk_score", 0.0)] * len(chunks),
         [metadata.get("region", "")] * len(chunks),
         [metadata.get("url", "")] * len(chunks),
+        [metadata.get("topic", "")] * len(chunks),
+        [json.dumps(metadata.get("entity_tags", []))] * len(chunks),
     ]
 
     result = collection.insert(data)
@@ -169,7 +174,7 @@ def search_vectors(query_text: str, top_k: int = 1, expr: str = None) -> List[Di
     output_fields = [
         "id", "content_id", "title", "text_preview", "raw_content", "chunk_index", "publish_time",
         "platform", "site_name", "author_name", "threat_category",
-        "risk_level", "industry", "risk_score", "region", "url"
+        "risk_level", "industry", "risk_score", "region", "url", "topic", "entity_tags"
     ]
 
     results = collection.search(
@@ -202,6 +207,8 @@ def search_vectors(query_text: str, top_k: int = 1, expr: str = None) -> List[Di
                 "risk_score": hit.entity.get("risk_score"),
                 "region": hit.entity.get("region"),
                 "url": hit.entity.get("url"),
+                "topic": hit.entity.get("topic"),
+                "entity_tags": json.loads(hit.entity.get("entity_tags", "[]")),
             })
     return search_results
 

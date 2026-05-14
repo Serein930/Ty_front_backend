@@ -26,7 +26,9 @@ async def get_intel_content_list(
         c.industry,
         c.risk_score,
         c.region,
-        c.url
+        c.url,
+        c.topic,
+        c.entity_tags
     FROM hawkeye_dwd_intel_content c
     LEFT JOIN hawkeye_dwd_intel_content_cold cc
         ON c.content_id = cc.content_id
